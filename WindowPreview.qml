@@ -8,6 +8,8 @@ ClippingRectangle {
 
   property var window: null
   property bool selected: false
+  // The panel waits for the first frame before it maps (see SwitcherPanel).
+  readonly property bool ready: capture.hasContent || !(root.window && root.window.wayland)
 
   radius: 12
   color: Commons.Color.background
@@ -19,6 +21,7 @@ ClippingRectangle {
   contentInsideBorder: false
 
   ScreencopyView {
+    id: capture
     anchors.centerIn: parent
     constraintSize: Qt.size(Math.max(1, root.width - 2), Math.max(1, root.height - 2))
     captureSource: root.window ? root.window.wayland : null

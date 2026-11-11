@@ -14,6 +14,18 @@ Item {
   property real cornerRadius: 12
   readonly property var windows: workspace && workspace.toplevels ? workspace.toplevels.values : []
   readonly property var geometry: WorkspaceModel.monitorGeometry(workspace ? workspace.monitor : null)
+  // True once every mapped window that can be captured has its first frame.
+  // The panel waits for this so it never appears with empty thumbnails.
+  property bool ready: false
+
+  function updateReady() {
+    for (var i = 0; i < tiles.count; i++) {
+      var tile = tiles.itemAt(i)
+      if (tile && tile.visible && !tile.captured) { root.ready = false; return }
+    }
+    root.ready = true
+  }
+
   readonly property real previewScale: Math.min(width / geometry.width, height / geometry.height)
 
   // Letterbox outputs with different aspect ratios, preserving window layout.
@@ -34,7 +46,11 @@ Item {
     contentInsideBorder: false
 
     Repeater {
+      id: tiles
       model: root.windows
+      onItemAdded: Qt.callLater(root.updateReady)
+      onItemRemoved: Qt.callLater(root.updateReady)
+      Component.onCompleted: Qt.callLater(root.updateReady)
 
       Rectangle {
         id: windowTile
@@ -53,6 +69,10 @@ Item {
         border.color: Commons.Util.alpha(Commons.Color.foreground, 0.32)
         border.width: 1
         clip: true
+        // Clients without an exported surface fall back to their icon.
+        readonly property bool captured: capture.hasContent || !(modelData && modelData.wayland)
+        onCapturedChanged: root.updateReady()
+        onVisibleChanged: root.updateReady()
 
         ScreencopyView {
           id: capture

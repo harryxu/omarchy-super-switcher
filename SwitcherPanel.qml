@@ -33,14 +33,17 @@ PanelWindow {
   property int shortcutStep: 1
   readonly property bool keyboardReady: root.active && root.inputReady && keyCatcher.activeFocus && keyCatcher.Window.active
   readonly property real naturalWidth: root.apps.length ? root.apps.length * root.slotWidth + (root.apps.length - 1) * root.slotSpacing + 2 * root.sidePadding : 0
-  readonly property real surfaceWidth: Math.min(root.naturalWidth, Math.max(0, root.width - 2 * root.screenMargin))
+  // Lay out from the output size: the unmapped panel reports zero width, and
+  // a resize on reveal would recreate the previews that were warming up.
+  readonly property real layoutWidth: root.width > 0 ? root.width : (root.screen ? root.screen.width : 0)
+  readonly property real surfaceWidth: Math.min(root.naturalWidth, Math.max(0, root.layoutWidth - 2 * root.screenMargin))
   property var iconSourceFor: function(app) { return "" }
   property var windowIconSourceFor: function(window) { return "" }
 
   // Icons and previews use the same centered row, with wider slots for previews.
   readonly property int iconSize: root.slotWidth
   property int artworkSize: 84
-  property int slotWidth: root.appMode ? 96 : Math.min(256, Math.max(1, root.width - 2 * (root.screenMargin + root.sidePadding)))
+  property int slotWidth: root.appMode ? 96 : Math.min(256, Math.max(1, root.layoutWidth - 2 * (root.screenMargin + root.sidePadding)))
   property int slotSpacing: root.appMode ? 12 : 16
   property int sidePadding: 24
   readonly property real rowHeight: root.appMode ? root.iconSize : root.slotWidth * 10 / 16 + 40
@@ -105,16 +108,21 @@ PanelWindow {
     }
   }
 
-  IpcHandler {
+  Commons.ShellIpc {
     target: "harryxu.super-switcher.switcher"
+    // Socket fast-path calls pass strings; normalize before strict compares.
     function acceptRelease(generation: int): void {
+      generation = Number(generation)
       // Ignore a reply from a session that was canceled or already committed.
       if (root.active && generation === root.releaseGeneration) root.activateSelected()
     }
     function acceptHold(generation: int): void {
+      generation = Number(generation)
       if (root.active && generation === root.releaseGeneration) root.showRequested = true
     }
     function acceptAppScope(generation: int, revision: int, currentWorkspaceOnly: bool): void {
+      generation = Number(generation); revision = Number(revision)
+      currentWorkspaceOnly = String(currentWorkspaceOnly) === "true"
       if (root.active && root.appMode && generation === root.releaseGeneration
           && revision === root.modifierQueryRevision)
         root.appScopeChanged(currentWorkspaceOnly)
@@ -243,7 +251,38 @@ PanelWindow {
     root.quitRequested(root.apps[root.selectedIndex].id)
   }
 
-  visible: root.showRequested && root.inputReady
+  // Workspace thumbnails start capturing while the hold is still pending.
+  // Map the panel only once the visible ones have a frame, so it never flashes
+  // empty tiles; the reveal timer bounds the wait if a capture stalls.
+  property bool previewsReady: false
+  // Latched: once shown, a late layout or capture change must not hide it.
+  property bool revealed: false
+  readonly property bool revealRequested: root.showRequested && root.inputReady
+
+  function updatePreviewsReady() {
+    if (root.appMode) { root.previewsReady = true; return }
+    for (var i = 0; i < appRow.count; i++) {
+      var tile = appRow.itemAtIndex(i)
+      var preview = tile ? tile.preview : null
+      if (tile && (!preview || !preview.ready)) { root.previewsReady = false; return }
+    }
+    root.previewsReady = true
+    if (root.revealRequested) root.revealed = true
+  }
+
+  onRevealRequestedChanged: {
+    root.revealed = false
+    if (root.revealRequested) { root.updatePreviewsReady(); revealTimer.restart() }
+    else revealTimer.stop()
+  }
+
+  Timer {
+    id: revealTimer
+    interval: 150
+    onTriggered: if (root.revealRequested) root.revealed = true
+  }
+
+  visible: root.revealRequested && root.revealed
   onVisibleChanged: {
     if (root.visible) {
       keyCatcher.forceActiveFocus()
@@ -324,15 +363,16 @@ PanelWindow {
       boundsBehavior: Flickable.StopAtBounds
       keyNavigationEnabled: false
       currentIndex: count > 0 ? root.selectedIndex : -1
-      // Do not instantiate icons or start captures for a quick tap.
-      model: root.visible ? root.apps : []
+      // Instantiate as soon as a session starts so preview captures warm up
+      // during the hold delay instead of after the panel is already shown.
+      model: root.active ? root.apps : []
 
       function revealSelection() {
         if (currentIndex >= 0 && currentIndex < count)
           positionViewAtIndex(currentIndex, ListView.Contain)
       }
       onCurrentIndexChanged: Qt.callLater(appRow.revealSelection)
-      onCountChanged: Qt.callLater(appRow.revealSelection)
+      onCountChanged: { Qt.callLater(appRow.revealSelection); Qt.callLater(root.updatePreviewsReady) }
       onWidthChanged: Qt.callLater(appRow.revealSelection)
 
       delegate: Item {
@@ -367,7 +407,10 @@ PanelWindow {
           visible: root.appMode
         }
 
+        readonly property var preview: previewLoader.item
+
         Loader {
+          id: previewLoader
           active: !root.appMode
           x: 8
           y: 8
@@ -383,6 +426,7 @@ PanelWindow {
             iconSourceFor: root.windowIconSourceFor
             selected: entryTile.selected
             live: root.workspaceLivePreview
+            onReadyChanged: root.updatePreviewsReady()
           }
         }
 
@@ -391,6 +435,7 @@ PanelWindow {
           WindowPreview {
             window: entryTile.window
             selected: entryTile.selected
+            onReadyChanged: root.updatePreviewsReady()
           }
         }
 

@@ -3,6 +3,7 @@ import QtCore
 import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
+import qs.Commons as Commons
 import "SwitcherModel.js" as SwitcherModel
 import "SwitcherKeys.js" as SwitcherKeys
 import "WorkspaceModel.js" as WorkspaceModel
@@ -284,9 +285,11 @@ Item {
     }
   }
 
-  IpcHandler {
+  Commons.ShellIpc {
     target: "harryxu.super-switcher"
     function shortcutPressed(step: int, keycodes: string, mode: string, press: int): void {
+      // Socket fast-path calls pass strings; normalize before strict compares.
+      step = Number(step); press = Number(press); mode = String(mode)
       var heldKeys = SwitcherKeys.parseHeldKeys(keycodes)
       if (heldKeys === null) return
       if (mode === "localApps") {
@@ -301,20 +304,24 @@ Item {
     function altTabNext(): void { root.requestCycle(1, "apps") }
     function altTabPrev(): void { root.requestCycle(-1, "apps") }
     function cycleHeld(step: int, keycodes: string): void {
+      step = Number(step)
       var heldKeys = SwitcherKeys.parseHeldKeys(keycodes)
       if (heldKeys !== null) root.cycle(step, heldKeys, false)
     }
     function localCycleHeld(step: int, keycodes: string): void {
+      step = Number(step)
       var heldKeys = SwitcherKeys.parseHeldKeys(keycodes)
       if (heldKeys !== null) root.cycle(step, heldKeys, true)
     }
     function windowCycleHeld(step: int, keycodes: string): void {
+      step = Number(step)
       var heldKeys = SwitcherKeys.parseHeldKeys(keycodes)
       if (heldKeys !== null) root.cycleWindows(step, heldKeys)
     }
     function workspaceNext(): void { root.requestCycle(1, "workspaces") }
     function workspacePrev(): void { root.requestCycle(-1, "workspaces") }
     function workspaceCycleHeld(step: int, keycodes: string): void {
+      step = Number(step)
       var heldKeys = SwitcherKeys.parseHeldKeys(keycodes)
       if (heldKeys !== null) root.cycleWorkspaces(step, heldKeys)
     }
