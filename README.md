@@ -10,6 +10,33 @@ Requires Omarchy with the Quickshell-based Omarchy shell and Hyprland 0.56 or
 later with its Lua configuration API. The plugin uses `omarchy-shell`, `hyprctl`,
 and the `timeout` command from GNU coreutils.
 
+### Option 1: Quick install (Interactive border choice)
+
+Run the installer directly from your terminal:
+
+```bash
+bash <(curl -sSL https://raw.githubusercontent.com/harryxu/omarchy-super-switcher/master/install.sh)
+```
+
+### Option 2: Clone and run installer
+
+Clone the repository and run `./install.sh`, which prompts you to choose between
+rounded (default) or squared borders:
+
+```bash
+git clone https://github.com/harryxu/omarchy-super-switcher.git
+cd omarchy-super-switcher
+./install.sh
+```
+
+You can also specify `--rounded` or `--squared` directly:
+
+```bash
+./install.sh --rounded
+```
+
+### Option 3: Install via Omarchy CLI
+
 ```bash
 omarchy plugin add https://github.com/harryxu/omarchy-super-switcher.git --enable
 ```
@@ -50,11 +77,15 @@ If `Q` brings up a save dialog, the switcher closes and focuses it.
 
 ### Application switcher
 
-![Application switcher with native app icons and the selected app's name](assets/screenshots/app-switcher.png)
+| Rounded borders (Default) | Squared borders |
+| :---: | :---: |
+| ![Application switcher with rounded borders](assets/screenshots/app-switcher.png) | ![Application switcher with squared borders](assets/screenshots/app-switcher-squared.png) |
 
 ### Workspace switcher
 
-![Workspace switcher showing Browse, Code, and Files in a demo session](assets/screenshots/workspace-switcher.png)
+| Rounded borders (Default) | Squared borders |
+| :---: | :---: |
+| ![Workspace switcher with rounded borders](assets/screenshots/workspace-switcher.png) | ![Workspace switcher with squared borders](assets/screenshots/workspace-switcher-squared.png) |
 
 ## Applications
 
@@ -71,6 +102,29 @@ its thumbnail. The panel only opens when the app has at least two windows.
 
 The switcher shows regular workspaces across all monitors, including empty
 ones. It lists numbered workspaces in order, then named workspaces alphabetically.
+
+## Border style settings
+
+The switcher uses classic rounded borders by default, and supports squared borders:
+
+| Rounded borders (Default) | Squared borders |
+| :---: | :---: |
+| ![Rounded borders](preview.png) | ![Squared borders](preview-squared.png) |
+
+You can choose between rounded and squared borders during installation, open the
+interactive terminal picker, or toggle them via CLI at any time:
+
+```bash
+# Open interactive terminal picker (gum choose)
+omarchy-super-switcher-setup
+
+# Or change via CLI directly
+omarchy-shell harryxu.super-switcher borderStyle
+omarchy-shell harryxu.super-switcher setBorderStyle squared
+omarchy-shell harryxu.super-switcher setBorderStyle rounded
+```
+
+Changes apply immediately to your switcher.
 
 ## Workspace preview settings
 
