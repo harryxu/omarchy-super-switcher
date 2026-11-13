@@ -127,15 +127,20 @@ Item {
       root.recentWindows = SwitcherModel.touchWindow(root.recentWindows, window.address)
   }
 
-  function currentAppId() {
-    var window = Hyprland.activeToplevel
+  // The window the user is effectively on: our pending focus target if
+  // Hyprland has not applied it yet, otherwise the active window.
+  function currentWindow() {
     if (root.inFlightAddress) {
       var windows = Hyprland.toplevels.values || []
       for (var i = 0; i < windows.length; i++) {
-        if (root.sameAddress(windows[i].address, root.inFlightAddress)) { window = windows[i]; break }
+        if (root.sameAddress(windows[i].address, root.inFlightAddress)) return windows[i]
       }
     }
-    var app = SwitcherModel.appForWindow(window, root.appEntries())
+    return Hyprland.activeToplevel
+  }
+
+  function currentAppId() {
+    var app = SwitcherModel.appForWindow(root.currentWindow(), root.appEntries())
     return app ? app.id : ""
   }
 
@@ -177,7 +182,9 @@ Item {
       if (step > 0) panel.next(); else panel.prev()
       return
     }
-    var current = Hyprland.activeToplevel
+    // Quick repeated taps must advance from the window we just asked to
+    // focus, not from the one Hyprland still reports as active.
+    var current = root.currentWindow()
     var entries = root.appEntries()
     var app = SwitcherModel.appForWindow(current, entries)
     var windows = SwitcherModel.buildWindows(Hyprland.toplevels.values || [], entries, app ? app.id : "")
