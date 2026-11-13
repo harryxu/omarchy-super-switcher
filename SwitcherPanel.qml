@@ -120,12 +120,14 @@ PanelWindow {
       generation = Number(generation)
       if (root.active && generation === root.releaseGeneration) root.showRequested = true
     }
-    function acceptAppScope(generation: int, revision: int, currentWorkspaceOnly: bool): void {
+    // Keep this a string: the socket fast path passes text, and a bool parameter
+    // would coerce "false" to true and filter to current-workspace apps.
+    function acceptAppScope(generation: int, revision: int, currentWorkspaceOnly: string): void {
       generation = Number(generation); revision = Number(revision)
-      currentWorkspaceOnly = String(currentWorkspaceOnly) === "true"
+      var localOnly = String(currentWorkspaceOnly) === "true"
       if (root.active && root.appMode && generation === root.releaseGeneration
           && revision === root.modifierQueryRevision)
-        root.appScopeChanged(currentWorkspaceOnly)
+        root.appScopeChanged(localOnly)
     }
   }
 
