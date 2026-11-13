@@ -15,8 +15,15 @@ Item {
   property bool measuring: false
   readonly property var placement: root.width > 0 ? Geometry.placement(root.bounds, root.sampleSize, root.artworkSize * root.sampleSize / root.width) : null
 
+  // The row is created while the panel is still unmapped (so previews warm up
+  // during the hold delay). Grabbing an item in an unmapped window yields an
+  // empty or partial frame, which used to be cached as this icon's bounds and
+  // left it invisible or mis-scaled. Measure only once the window is shown.
+  readonly property bool windowShown: root.Window.window ? root.Window.window.visible : false
+  onWindowShownChanged: if (root.windowShown) Qt.callLater(root.measure)
+
   function measure() {
-    if (!sampler.available || original.status !== Image.Ready || root.measuring || root.bounds) return
+    if (!root.windowShown || !sampler.available || original.status !== Image.Ready || root.measuring || root.bounds) return
     var key = String(root.displaySource)
     if (Geometry.measuredBounds[key] !== undefined) {
       root.bounds = Geometry.measuredBounds[key]
@@ -27,6 +34,7 @@ Item {
     // Theme image providers can otherwise report different native DPRs.
     var started = original.grabToImage(function(result) {
       if (!root || key !== String(root.displaySource)) return
+      if (!root.windowShown) { root.measuring = false; return }
       root.grabResult = result
       sampler.loadImage(result.url)
       // Item grabs can load synchronously without an imageLoaded signal.
@@ -72,9 +80,14 @@ Item {
       var ctx = getContext("2d")
       ctx.clearRect(0, 0, root.sampleSize, root.sampleSize)
       ctx.drawImage(root.grabResult.url, 0, 0, root.sampleSize, root.sampleSize)
-      root.bounds = Geometry.alphaBounds(ctx.getImageData(0, 0, root.sampleSize, root.sampleSize).data, root.sampleSize, root.sampleSize)
+        var bounds = Geometry.alphaBounds(ctx.getImageData(0, 0, root.sampleSize, root.sampleSize).data, root.sampleSize, root.sampleSize)
       ctx.clearRect(0, 0, root.sampleSize, root.sampleSize)
-      Geometry.measuredBounds[String(root.displaySource)] = root.bounds
+      // A blank or sliver capture means the frame was not rendered yet. Keep
+      // the unscaled icon and do not poison the shared cache with it.
+      if (bounds && Math.min(bounds.width, bounds.height) >= root.sampleSize / 8) {
+        root.bounds = bounds
+        Geometry.measuredBounds[String(root.displaySource)] = bounds
+      }
       unloadImage(root.grabResult.url)
       root.grabResult = null
       root.measuring = false
