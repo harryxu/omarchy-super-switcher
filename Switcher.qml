@@ -7,6 +7,7 @@ import qs.Commons as Commons
 import "SwitcherModel.js" as SwitcherModel
 import "SwitcherKeys.js" as SwitcherKeys
 import "WorkspaceModel.js" as WorkspaceModel
+import "IconGeometry.js" as IconGeometry
 
 // For local development, symlink this checkout at ~/.config/omarchy/plugins/harryxu.super-switcher.
 // Run `omarchy-shell shell rescanPlugins`, then `omarchy plugin enable harryxu.super-switcher`.
@@ -41,6 +42,32 @@ Item {
     onLoadFailed: root.workspacePreviewMode = "static"
   }
 
+  // Icon geometry survives shell restarts, so an icon is measured on screen
+  // once ever instead of jumping from fallback to final size after each restart.
+  property int savedIconRevision: 0
+  FileView {
+    id: iconBoundsFile
+    path: StandardPaths.writableLocation(StandardPaths.GenericCacheLocation) + "/omarchy/super-switcher-icon-bounds.json"
+    printErrors: false
+    blockLoading: true
+    onLoaded: IconGeometry.restore(text())
+  }
+
+  function saveIconBounds() {
+    if (IconGeometry.revision === root.savedIconRevision) return
+    root.savedIconRevision = IconGeometry.revision
+    iconBoundsFile.setText(IconGeometry.serialize())
+  }
+
+  function sameApps(a, b) {
+    if (a.length !== b.length) return false
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].id !== b[i].id || a[i].icon !== b[i].icon
+          || a[i].addresses.join() !== b[i].addresses.join()) return false
+    }
+    return true
+  }
+
   function syncSubmap() {
     // Serialize enter/leave commands. A rapid close/reopen must not let an
     // older leave command reset the new session's input mode.
@@ -68,6 +95,9 @@ Item {
     var selected = panel.apps[panel.selectedIndex]
     var apps = root.sessionApps()
     if (!apps.length) { panel.cancel(); return }
+    // Reassigning the model recreates every delegate (icons blank for a frame).
+    // Hyprland emits many no-op toplevel updates, so keep the model if unchanged.
+    if (root.sameApps(apps, panel.apps)) return
     var selectedIndex = SwitcherModel.selectionIndex(apps, selected ? selected.id : "", panel.selectedIndex)
     panel.apps = apps
     panel.selectedIndex = selectedIndex
@@ -430,6 +460,7 @@ Item {
     onAppScopeChanged: function(currentWorkspaceOnly) { root.setAppScope(currentWorkspaceOnly) }
     onQuitRequested: function(appId) { root.quitApp(appId) }
     onShowRequestedChanged: root.syncSubmap()
+    onActiveChanged: if (!active) Qt.callLater(root.saveIconBounds)
   }
 
   HyprlandProcess {

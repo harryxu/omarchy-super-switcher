@@ -10,7 +10,9 @@ Item {
   property real artworkSize: 84
   readonly property int sampleSize: 210
   property url displaySource: source
-  property var bounds: null
+  // Resolve cached geometry synchronously so the very first frame already has
+  // the final size; a deferred lookup showed one frame at the fallback size.
+  property var bounds: Geometry.cachedBounds(source)
   property var grabResult: null
   property bool measuring: false
   readonly property var placement: root.width > 0 ? Geometry.placement(root.bounds, root.sampleSize, root.artworkSize * root.sampleSize / root.width) : null
@@ -25,10 +27,8 @@ Item {
   function measure() {
     if (!root.windowShown || !sampler.available || original.status !== Image.Ready || root.measuring || root.bounds) return
     var key = String(root.displaySource)
-    if (Geometry.measuredBounds[key] !== undefined) {
-      root.bounds = Geometry.measuredBounds[key]
-      return
-    }
+    var cached = Geometry.cachedBounds(key)
+    if (cached) { root.bounds = cached; return }
     root.measuring = true
     // Capture Qt's actual rendering, then sample it on one fixed pixel grid.
     // Theme image providers can otherwise report different native DPRs.
@@ -86,7 +86,7 @@ Item {
       // the unscaled icon and do not poison the shared cache with it.
       if (bounds && Math.min(bounds.width, bounds.height) >= root.sampleSize / 8) {
         root.bounds = bounds
-        Geometry.measuredBounds[String(root.displaySource)] = bounds
+        Geometry.remember(String(root.displaySource), bounds)
       }
       unloadImage(root.grabResult.url)
       root.grabResult = null
@@ -95,7 +95,7 @@ Item {
   }
 
   onDisplaySourceChanged: {
-    root.bounds = null
+    root.bounds = Geometry.cachedBounds(root.displaySource)
     root.grabResult = null
     root.measuring = false
     Qt.callLater(root.measure)
