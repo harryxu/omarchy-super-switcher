@@ -3,9 +3,11 @@ import QtCore
 import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
+import qs.Commons as Commons
 import "SwitcherModel.js" as SwitcherModel
 import "SwitcherKeys.js" as SwitcherKeys
 import "WorkspaceModel.js" as WorkspaceModel
+import "IconGeometry.js" as IconGeometry
 
 // For local development, symlink this checkout at ~/.config/omarchy/plugins/harryxu.super-switcher.
 // Run `omarchy-shell shell rescanPlugins`, then `omarchy plugin enable harryxu.super-switcher`.
@@ -15,6 +17,10 @@ Item {
 
   property var recentWindows: []
   property string pendingFocusTarget: ""
+  // Window the switcher just asked Hyprland to focus. Until Hyprland reports it
+  // active, treat it as the current window so a quick second tap returns to the
+  // previous app (Cmd+Tab, Cmd+Tab on macOS) instead of repeating the same jump.
+  property string inFlightAddress: ""
   property bool pendingWorkspaceFocus: false
   property var pendingAppWorkspaceId: null
   property string pendingCursorPosition: ""
@@ -34,6 +40,32 @@ Item {
     onFileChanged: reload()
     onLoaded: root.workspacePreviewMode = text().trim() === "live" ? "live" : "static"
     onLoadFailed: root.workspacePreviewMode = "static"
+  }
+
+  // Icon geometry survives shell restarts, so an icon is measured on screen
+  // once ever instead of jumping from fallback to final size after each restart.
+  property int savedIconRevision: 0
+  FileView {
+    id: iconBoundsFile
+    path: StandardPaths.writableLocation(StandardPaths.GenericCacheLocation) + "/omarchy/super-switcher-icon-bounds.json"
+    printErrors: false
+    blockLoading: true
+    onLoaded: IconGeometry.restore(text())
+  }
+
+  function saveIconBounds() {
+    if (IconGeometry.revision === root.savedIconRevision) return
+    root.savedIconRevision = IconGeometry.revision
+    iconBoundsFile.setText(IconGeometry.serialize())
+  }
+
+  function sameApps(a, b) {
+    if (a.length !== b.length) return false
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].id !== b[i].id || a[i].icon !== b[i].icon
+          || a[i].addresses.join() !== b[i].addresses.join()) return false
+    }
+    return true
   }
 
   function syncSubmap() {
@@ -63,6 +95,9 @@ Item {
     var selected = panel.apps[panel.selectedIndex]
     var apps = root.sessionApps()
     if (!apps.length) { panel.cancel(); return }
+    // Reassigning the model recreates every delegate (icons blank for a frame).
+    // Hyprland emits many no-op toplevel updates, so keep the model if unchanged.
+    if (root.sameApps(apps, panel.apps)) return
     var selectedIndex = SwitcherModel.selectionIndex(apps, selected ? selected.id : "", panel.selectedIndex)
     panel.apps = apps
     panel.selectedIndex = selectedIndex
@@ -76,10 +111,37 @@ Item {
     root.refreshApps()
   }
 
+  function sameAddress(a, b) {
+    return String(a || "").replace(/^0x/i, "").toLowerCase() === String(b || "").replace(/^0x/i, "").toLowerCase()
+  }
+
   function rememberFocus() {
     var window = Hyprland.activeToplevel
+    if (root.inFlightAddress) {
+      // Ignore the stale focus while our own focus request is still in flight.
+      if (!window || !root.sameAddress(window.address, root.inFlightAddress)) return
+      root.inFlightAddress = ""
+      inFlightExpiry.stop()
+    }
     if (window && window.address)
       root.recentWindows = SwitcherModel.touchWindow(root.recentWindows, window.address)
+  }
+
+  // The window the user is effectively on: our pending focus target if
+  // Hyprland has not applied it yet, otherwise the active window.
+  function currentWindow() {
+    if (root.inFlightAddress) {
+      var windows = Hyprland.toplevels.values || []
+      for (var i = 0; i < windows.length; i++) {
+        if (root.sameAddress(windows[i].address, root.inFlightAddress)) return windows[i]
+      }
+    }
+    return Hyprland.activeToplevel
+  }
+
+  function currentAppId() {
+    var app = SwitcherModel.appForWindow(root.currentWindow(), root.appEntries())
+    return app ? app.id : ""
   }
 
   function restoreRuntimeConfig() {
@@ -112,8 +174,7 @@ Item {
     root.appSessionWorkspaceId = Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : 0
     var apps = root.sessionApps()
     if (!apps.length) { panel.cancel(); return }
-    var current = SwitcherModel.appForWindow(Hyprland.activeToplevel, root.appEntries())
-    panel.open(apps, SwitcherModel.initialIndex(apps, current ? current.id : "", step), heldKeys, "apps")
+    panel.open(apps, SwitcherModel.initialIndex(apps, root.currentAppId(), step), heldKeys, "apps")
   }
 
   function cycleWindows(step, heldKeys) {
@@ -121,7 +182,9 @@ Item {
       if (step > 0) panel.next(); else panel.prev()
       return
     }
-    var current = Hyprland.activeToplevel
+    // Quick repeated taps must advance from the window we just asked to
+    // focus, not from the one Hyprland still reports as active.
+    var current = root.currentWindow()
     var entries = root.appEntries()
     var app = SwitcherModel.appForWindow(current, entries)
     var windows = SwitcherModel.buildWindows(Hyprland.toplevels.values || [], entries, app ? app.id : "")
@@ -215,6 +278,11 @@ Item {
     root.pendingWorkspaceFocus = false
     root.pendingAppWorkspaceId = workspaceId
     root.recentWindows = SwitcherModel.touchWindow(root.recentWindows, rawAddress)
+    var active = Hyprland.activeToplevel
+    if (!active || !root.sameAddress(active.address, rawAddress)) {
+      root.inFlightAddress = String(rawAddress)
+      inFlightExpiry.restart()
+    }
     restoreCursorWarps.stop()
     if (!cursorCapture.running) cursorCapture.running = true
   }
@@ -284,9 +352,11 @@ Item {
     }
   }
 
-  IpcHandler {
+  Commons.ShellIpc {
     target: "harryxu.super-switcher"
     function shortcutPressed(step: int, keycodes: string, mode: string, press: int): void {
+      // Socket fast-path calls pass strings; normalize before strict compares.
+      step = Number(step); press = Number(press); mode = String(mode)
       var heldKeys = SwitcherKeys.parseHeldKeys(keycodes)
       if (heldKeys === null) return
       if (mode === "localApps") {
@@ -301,20 +371,24 @@ Item {
     function altTabNext(): void { root.requestCycle(1, "apps") }
     function altTabPrev(): void { root.requestCycle(-1, "apps") }
     function cycleHeld(step: int, keycodes: string): void {
+      step = Number(step)
       var heldKeys = SwitcherKeys.parseHeldKeys(keycodes)
       if (heldKeys !== null) root.cycle(step, heldKeys, false)
     }
     function localCycleHeld(step: int, keycodes: string): void {
+      step = Number(step)
       var heldKeys = SwitcherKeys.parseHeldKeys(keycodes)
       if (heldKeys !== null) root.cycle(step, heldKeys, true)
     }
     function windowCycleHeld(step: int, keycodes: string): void {
+      step = Number(step)
       var heldKeys = SwitcherKeys.parseHeldKeys(keycodes)
       if (heldKeys !== null) root.cycleWindows(step, heldKeys)
     }
     function workspaceNext(): void { root.requestCycle(1, "workspaces") }
     function workspacePrev(): void { root.requestCycle(-1, "workspaces") }
     function workspaceCycleHeld(step: int, keycodes: string): void {
+      step = Number(step)
       var heldKeys = SwitcherKeys.parseHeldKeys(keycodes)
       if (heldKeys !== null) root.cycleWorkspaces(step, heldKeys)
     }
@@ -393,6 +467,7 @@ Item {
     onAppScopeChanged: function(currentWorkspaceOnly) { root.setAppScope(currentWorkspaceOnly) }
     onQuitRequested: function(appId) { root.quitApp(appId) }
     onShowRequestedChanged: root.syncSubmap()
+    onActiveChanged: if (!active) Qt.callLater(root.saveIconBounds)
   }
 
   HyprlandProcess {
@@ -420,6 +495,13 @@ Item {
   }
 
   // Preserve the pointer position when focusing another app or workspace.
+  // Give up on a focus request Hyprland never applied (window closed, refused).
+  Timer {
+    id: inFlightExpiry
+    interval: 600
+    onTriggered: { root.inFlightAddress = ""; root.rememberFocus() }
+  }
+
   HyprlandProcess {
     id: cursorCapture
     command: ["hyprctl", "cursorpos"]

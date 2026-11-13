@@ -186,3 +186,13 @@ test("uses native icons and known aliases with a neutral fallback", () => {
   assert.equal(model.iconName({ id: "code.desktop" }), "vscode")
   assert.equal(model.iconName({ id: "unrecognized" }), "application-x-executable")
 })
+
+test("windows missing from shell history fall back to Hyprland focus history", () => {
+  const entries = [{ id: "code", name: "Code" }, { id: "org.gnome.Nautilus", name: "Files", startupClass: "Nautilus" }]
+  const a = { address: "0x1", lastIpcObject: { class: "code", focusHistoryID: 2 } }
+  const b = { address: "0x2", lastIpcObject: { class: "Nautilus", focusHistoryID: 0 } }
+  const c = { address: "0x3", lastIpcObject: { class: "code", focusHistoryID: 1 } }
+  const apps = JSON.parse(JSON.stringify(model.buildApps([a, b, c], entries, [])))
+  assert.deepEqual(apps.map(app => app.id), ["org.gnome.Nautilus", "code"])
+  assert.deepEqual(apps[1].addresses, ["0x3", "0x1"])
+})

@@ -2,6 +2,33 @@
 
 // Cache only source geometry, not theme colors or rendered pixels.
 var measuredBounds = Object.create(null)
+// Bumped whenever a new measurement lands, so the shell can persist the cache.
+var revision = 0
+
+function cachedBounds(source) {
+    var value = measuredBounds[String(source)]
+    return value ? value : null
+}
+
+function remember(source, bounds) {
+    measuredBounds[String(source)] = bounds
+    revision++
+}
+
+function restore(json) {
+    try {
+        var data = JSON.parse(json)
+        for (var key in data) {
+            var b = data[key]
+            if (b && b.width > 0 && b.height > 0 && measuredBounds[key] === undefined)
+                measuredBounds[key] = { x: b.x, y: b.y, width: b.width, height: b.height }
+        }
+    } catch (e) {}
+}
+
+function serialize() {
+    return JSON.stringify(measuredBounds)
+}
 
 function alphaBounds(pixels, width, height) {
     var left = width, top = height, right = -1, bottom = -1
@@ -29,5 +56,5 @@ function placement(bounds, canvasSize, artworkSize) {
 }
 
 if (typeof module !== "undefined" && module.exports) {
-    module.exports = { alphaBounds: alphaBounds, placement: placement }
+    module.exports = { alphaBounds: alphaBounds, placement: placement, cachedBounds: cachedBounds, remember: remember, restore: restore, serialize: serialize }
 }
