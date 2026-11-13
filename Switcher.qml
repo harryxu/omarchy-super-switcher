@@ -16,6 +16,10 @@ Item {
 
   property var recentWindows: []
   property string pendingFocusTarget: ""
+  // Window the switcher just asked Hyprland to focus. Until Hyprland reports it
+  // active, treat it as the current window so a quick second tap returns to the
+  // previous app (Cmd+Tab, Cmd+Tab on macOS) instead of repeating the same jump.
+  property string inFlightAddress: ""
   property bool pendingWorkspaceFocus: false
   property var pendingAppWorkspaceId: null
   property string pendingCursorPosition: ""
@@ -77,10 +81,32 @@ Item {
     root.refreshApps()
   }
 
+  function sameAddress(a, b) {
+    return String(a || "").replace(/^0x/i, "").toLowerCase() === String(b || "").replace(/^0x/i, "").toLowerCase()
+  }
+
   function rememberFocus() {
     var window = Hyprland.activeToplevel
+    if (root.inFlightAddress) {
+      // Ignore the stale focus while our own focus request is still in flight.
+      if (!window || !root.sameAddress(window.address, root.inFlightAddress)) return
+      root.inFlightAddress = ""
+      inFlightExpiry.stop()
+    }
     if (window && window.address)
       root.recentWindows = SwitcherModel.touchWindow(root.recentWindows, window.address)
+  }
+
+  function currentAppId() {
+    var window = Hyprland.activeToplevel
+    if (root.inFlightAddress) {
+      var windows = Hyprland.toplevels.values || []
+      for (var i = 0; i < windows.length; i++) {
+        if (root.sameAddress(windows[i].address, root.inFlightAddress)) { window = windows[i]; break }
+      }
+    }
+    var app = SwitcherModel.appForWindow(window, root.appEntries())
+    return app ? app.id : ""
   }
 
   function restoreRuntimeConfig() {
@@ -113,8 +139,7 @@ Item {
     root.appSessionWorkspaceId = Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : 0
     var apps = root.sessionApps()
     if (!apps.length) { panel.cancel(); return }
-    var current = SwitcherModel.appForWindow(Hyprland.activeToplevel, root.appEntries())
-    panel.open(apps, SwitcherModel.initialIndex(apps, current ? current.id : "", step), heldKeys, "apps")
+    panel.open(apps, SwitcherModel.initialIndex(apps, root.currentAppId(), step), heldKeys, "apps")
   }
 
   function cycleWindows(step, heldKeys) {
@@ -216,6 +241,11 @@ Item {
     root.pendingWorkspaceFocus = false
     root.pendingAppWorkspaceId = workspaceId
     root.recentWindows = SwitcherModel.touchWindow(root.recentWindows, rawAddress)
+    var active = Hyprland.activeToplevel
+    if (!active || !root.sameAddress(active.address, rawAddress)) {
+      root.inFlightAddress = String(rawAddress)
+      inFlightExpiry.restart()
+    }
     restoreCursorWarps.stop()
     if (!cursorCapture.running) cursorCapture.running = true
   }
@@ -427,6 +457,13 @@ Item {
   }
 
   // Preserve the pointer position when focusing another app or workspace.
+  // Give up on a focus request Hyprland never applied (window closed, refused).
+  Timer {
+    id: inFlightExpiry
+    interval: 600
+    onTriggered: { root.inFlightAddress = ""; root.rememberFocus() }
+  }
+
   HyprlandProcess {
     id: cursorCapture
     command: ["hyprctl", "cursorpos"]

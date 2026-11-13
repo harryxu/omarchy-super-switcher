@@ -63,6 +63,11 @@ function windowInWorkspace(window, workspaceId) {
     return !!workspace && Number(workspace.id) === Number(workspaceId)
 }
 
+function focusRank(window) {
+    var id = Number((window && window.lastIpcObject || {}).focusHistoryID)
+    return isFinite(id) && id >= 0 ? id : Number.MAX_SAFE_INTEGER
+}
+
 function buildApps(windows, entries, history, workspaceId) {
     var ordered = []
     for (var i = 0; i < windows.length; i++) {
@@ -70,12 +75,17 @@ function buildApps(windows, entries, history, workspaceId) {
         if (!window || !window.address || (window.lastIpcObject || {}).mapped === false) continue
         if (workspaceId !== undefined && workspaceId !== null && !windowInWorkspace(window, workspaceId)) continue
         var app = appForWindow(window, entries)
-        if (app) ordered.push({ app: app, address: window.address })
+        if (app) ordered.push({ app: app, address: window.address, window: window })
     }
+    // Windows the shell has not seen focused yet (e.g. after a shell restart)
+    // fall back to Hyprland's own focus history, like macOS keeps app order.
     ordered.sort(function(a, b) {
         var ai = history.indexOf(a.address)
         var bi = history.indexOf(b.address)
-        return (ai < 0 ? history.length : ai) - (bi < 0 ? history.length : bi)
+        var ar = ai < 0 ? history.length : ai
+        var br = bi < 0 ? history.length : bi
+        if (ar !== br) return ar - br
+        return focusRank(a.window) - focusRank(b.window)
     })
     var apps = []
     for (var j = 0; j < ordered.length; j++) {
