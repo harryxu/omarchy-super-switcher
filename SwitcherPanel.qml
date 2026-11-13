@@ -288,8 +288,14 @@ PanelWindow {
   onVisibleChanged: {
     if (root.visible) {
       keyCatcher.forceActiveFocus()
+      switcherSurface.opacity = 0
+      revealFade.restart()
       root.scheduleShortcutRepeat()
-    } else shortcutRepeat.stop()
+    } else {
+      shortcutRepeat.stop()
+      revealFade.stop()
+      switcherSurface.opacity = 0
+    }
   }
   color: "transparent"
   exclusionMode: ExclusionMode.Ignore
@@ -317,7 +323,18 @@ PanelWindow {
     color: Commons.Util.alpha(Commons.Color.background, root.appMode ? 0.88 : 0.97)
     border.color: Commons.Util.alpha(Commons.Color.foreground, 0.20)
     border.width: 1
-    opacity: root.active ? 1 : 0.96
+    // Fade in, slow at first: releasing the shortcut just after the reveal
+    // ends the session while the panel is still nearly transparent, instead
+    // of flashing it at full opacity for a few frames.
+    opacity: 0
+    NumberAnimation on opacity {
+      id: revealFade
+      running: false
+      from: 0
+      to: 1
+      duration: 140
+      easing.type: Easing.InQuad
+    }
 
     Loader {
       active: root.visible && root.windowHeaderHeight > 0
