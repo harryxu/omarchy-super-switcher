@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Resolve installed application icons even when the configured system icon theme
+  is missing. Empty icon sources now display the bundled default artwork.
+
 ## v0.3.1
 
 ### Fixed

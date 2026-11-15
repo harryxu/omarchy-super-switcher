@@ -45,6 +45,22 @@ TestCase {
     return capture.bounds
   }
 
+  function test_emptySource() {
+    var icon = createTemporaryObject(iconComponent, testCase, {
+      width: 96, height: 96, source: ""
+    })
+    verify(icon !== null)
+    tryVerify(function() { return icon.bounds !== null }, 3000)
+    verify(String(icon.displaySource).endsWith("/assets/default-app.svg"))
+    verify(renderedBounds(icon) !== null)
+    icon.source = Qt.resolvedUrl("fixtures/icon-solid.svg")
+    tryVerify(function() { return icon.bounds !== null }, 3000)
+    icon.source = ""
+    tryVerify(function() { return icon.bounds !== null }, 3000)
+    verify(String(icon.displaySource).endsWith("/assets/default-app.svg"))
+    verify(renderedBounds(icon) !== null)
+  }
+
   function test_artwork_data() {
     return [
       { tag: "solid-96", file: "icon-solid.svg", size: 96 },

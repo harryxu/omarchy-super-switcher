@@ -189,12 +189,14 @@ Item {
     }
   }
 
+  IconResolver { id: iconResolver }
+
   function iconSource(app) {
     var name = SwitcherModel.iconName(app)
     if (name === "application-x-executable") return Qt.resolvedUrl("assets/default-app.svg")
     if (name.indexOf("/") === 0) return "file://" + name
     if (/^(file|image):/.test(name)) return name
-    return Quickshell.iconPath(name, true)
+    return Quickshell.iconPath(name, true) || iconResolver.iconSource(name) || Qt.resolvedUrl("assets/default-app.svg")
   }
 
   function activateApp(id) {

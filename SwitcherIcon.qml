@@ -9,7 +9,7 @@ Item {
   required property url source
   property real artworkSize: 84
   readonly property int sampleSize: 210
-  property url displaySource: source
+  property url displaySource: String(source) ? source : Qt.resolvedUrl("assets/default-app.svg")
   property var bounds: null
   property var grabResult: null
   property bool measuring: false
@@ -87,5 +87,5 @@ Item {
     root.measuring = false
     Qt.callLater(root.measure)
   }
-  onSourceChanged: root.displaySource = source
+  onSourceChanged: root.displaySource = String(source) ? source : Qt.resolvedUrl("assets/default-app.svg")
 }
