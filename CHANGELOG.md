@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## v0.4.0
+
+### Added
+
+- Hold the full app, window, or workspace shortcut to cycle automatically to
+  the last entry. The Shift variant cycles to the first entry. Releasing Tab or
+  the grave key stops automatic cycling while the modifier stays held.
 
 ### Fixed
 
