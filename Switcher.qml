@@ -286,7 +286,7 @@ Item {
     }
   }
 
-  IpcHandler {
+  SwitcherIpcHandler {
     target: "harryxu.super-switcher"
     function shortcutPressed(step: int, keycodes: string, mode: string, press: int): void {
       var heldKeys = SwitcherKeys.parseHeldKeys(keycodes)

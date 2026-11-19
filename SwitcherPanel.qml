@@ -105,7 +105,7 @@ PanelWindow {
     }
   }
 
-  IpcHandler {
+  SwitcherIpcHandler {
     target: "harryxu.super-switcher.switcher"
     function acceptRelease(generation: int): void {
       // Ignore a reply from a session that was canceled or already committed.
@@ -114,10 +114,12 @@ PanelWindow {
     function acceptHold(generation: int): void {
       if (root.active && generation === root.releaseGeneration) root.showRequested = true
     }
-    function acceptAppScope(generation: int, revision: int, currentWorkspaceOnly: bool): void {
+    // The socket passes text, which QML would coerce from "false" to true.
+    function acceptAppScope(generation: int, revision: int, currentWorkspaceOnly: string): void {
       if (root.active && root.appMode && generation === root.releaseGeneration
-          && revision === root.modifierQueryRevision)
-        root.appScopeChanged(currentWorkspaceOnly)
+          && revision === root.modifierQueryRevision
+          && (currentWorkspaceOnly === "true" || currentWorkspaceOnly === "false"))
+        root.appScopeChanged(currentWorkspaceOnly === "true")
     }
   }
 
