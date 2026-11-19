@@ -17,5 +17,5 @@
 | 08 | [刚过长按阈值松键可能让面板闪现](issues/08-short-hold-panel-flash.md) | 已部署并复测 |
 | 10 | [PR 的应用面板会额外等待预览兜底定时器](issues/10-app-reveal-fallback-delay.md) | 现有实现已覆盖 |
 | 11 | [PR 的快点路径会提前创建预览项](issues/11-preview-starts-on-quick-tap.md) | 现有实现已覆盖 |
-| 12 | [PR 的待确认焦点可能在三连按中重复使用](issues/12-stale-in-flight-focus.md) | PR 实现 |
+| 12 | [PR 的待确认焦点可能在三连按中重复使用](issues/12-stale-in-flight-focus.md) | 现有实现已覆盖 |
 | 13 | [PR 在面板映射前抓图可能缓存错误图标边界](issues/13-icon-geometry-before-map.md) | PR 实现 |
