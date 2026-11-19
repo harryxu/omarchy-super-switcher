@@ -114,15 +114,19 @@ function pendingCommand(codes, generation) {
     + "local function any_held(released) "
     + "for code in pairs(keys) do if code ~= released and hl.is_key_down(code) then return true end end "
     + "return false end "
-    + "local function stop() "
-    + "if state.release then state.release:remove() state.release = nil end "
+    + "local function stop_timer() "
     + "if state.timer then state.timer:set_enabled(false) end "
     + "state.deadline = nil end "
-    + "local function finish(held) stop() "
+    + "local function stop() "
+    + "if state.release then state.release:remove() state.release = nil end stop_timer() end "
+    // Keep tracking release after the hold threshold until the panel has
+    // keyboard focus and checks the modifiers itself.
+    + "local function finish(held) if held then stop_timer() else stop() end "
     + "local method = held and \"acceptHold\" or \"acceptRelease\" "
     + "hl.exec_cmd(\"omarchy-shell -q harryxu.super-switcher.switcher \" .. method .. \" " + generation + "\") end "
     + "if not any_held() then finish(false) return end "
     + "stop() "
+    + "state.generation = " + generation + " "
     + "state.release = hl.on(\"input.keyboard.key\", function(code, _, event) "
     + "if event == 0 and keys[code] and not any_held(code) then finish(false) end end) "
     + "state.deadline = function() finish(any_held()) end "
@@ -135,7 +139,11 @@ function pendingCommand(codes, generation) {
 
 function releaseCommand(codes, generation, trackAppScope, revision) {
   var checks = codes.map(function(code) { return "hl.is_key_down(" + code + ")" })
-  return "if not (" + (checks.length ? checks.join(" or ") : "false") + ") then "
+  // Transfer release tracking to the focused panel in the same compositor call.
+  return "local state = _G.harryxu_super_switcher_pending "
+    + "if state and state.generation == " + generation + " and state.release then "
+    + "state.release:remove() state.release = nil end "
+    + "if not (" + (checks.length ? checks.join(" or ") : "false") + ") then "
     + "hl.exec_cmd(\"omarchy-shell -q harryxu.super-switcher.switcher acceptRelease "
     + generation + "\") "
     + (trackAppScope ? "else hl.exec_cmd(\"omarchy-shell -q harryxu.super-switcher.switcher acceptAppScope "

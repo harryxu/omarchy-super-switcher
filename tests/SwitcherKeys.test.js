@@ -195,9 +195,33 @@ test("a held modifier requests the panel only at the threshold", () => {
     advance(holdThreshold - 1)
     assert(timer.deadline == holdThreshold and next(listeners))
     advance(1)
-    assert(not timer.deadline and not next(listeners))
+    assert(not timer.deadline and next(listeners))
     advance(holdThreshold)
   `, [133, 134]), "omarchy-shell -q harryxu.super-switcher.switcher acceptHold 20")
+})
+
+test("releasing just after the hold threshold commits before the panel gets keyboard focus", () => {
+  assert.equal(lua(`${keys.pendingCommand([133], 20)}
+    advance(holdThreshold + 5)
+    release(133)
+    assert(not timer.deadline and not next(listeners))
+  `, [133]), ["omarchy-shell -q harryxu.super-switcher.switcher acceptHold 20",
+    "omarchy-shell -q harryxu.super-switcher.switcher acceptRelease 20"].join("\n"))
+})
+
+test("only the focused panel's matching modifier check takes over release tracking", () => {
+  const stale = keys.releaseCommand([133], 19, false, 1)
+  const current = keys.releaseCommand([133], 20, false, 1)
+  assert.equal(lua(`${keys.pendingCommand([133], 20)}
+    advance(holdThreshold)
+    do ${stale} end
+    assert(next(listeners))
+    do ${current} end
+    assert(not next(listeners))
+    release(133)
+    do ${current} end
+  `, [133]), ["omarchy-shell -q harryxu.super-switcher.switcher acceptHold 20",
+    "omarchy-shell -q harryxu.super-switcher.switcher acceptRelease 20"].join("\n"))
 })
 
 test("the deadline checks the current modifier state if a release was missed", () => {
@@ -217,7 +241,7 @@ test("a new pending session replaces the old modifier check and deadline", () =>
     advance(holdThreshold - 1)
     assert(timer.deadline == 2 * holdThreshold - 10 and next(listeners))
     advance(1)
-    assert(not timer.deadline and not next(listeners))
+    assert(not timer.deadline and next(listeners))
   `, [64, 133]), "omarchy-shell -q harryxu.super-switcher.switcher acceptHold 22")
 })
 
