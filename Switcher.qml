@@ -14,6 +14,7 @@ Item {
   id: root
 
   property var recentWindows: []
+  property bool observedActiveWindow: false
   property string pendingFocusTarget: ""
   property bool pendingWorkspaceFocus: false
   property var pendingAppWorkspaceId: null
@@ -104,7 +105,14 @@ Item {
     var window = target ? root.windowForFocusTarget(target) : null
     if (window && (workspaceId === null || SwitcherModel.windowInWorkspace(window, workspaceId)))
       return window
-    return Hyprland.activeToplevel
+    var active = Hyprland.activeToplevel
+    if (active || root.observedActiveWindow) return active
+    // The initial clients snapshot can arrive before the first focus event.
+    return (Hyprland.toplevels.values || []).find(function(candidate) {
+      var ipc = candidate && candidate.lastIpcObject || {}
+      return candidate && candidate.address && ipc.mapped !== false && ipc.focusHistoryID === 0
+        && (workspaceId === null || SwitcherModel.windowInWorkspace(candidate, workspaceId))
+    }) || null
   }
 
   function clearSwitchFocus() {
@@ -123,6 +131,7 @@ Item {
     var window = Hyprland.activeToplevel
     var target = root.windowFocusTarget(window ? window.address : "")
     if (!target) return
+    root.observedActiveWindow = true
     var targets = root.sentSwitchFocusTargets
     var index = targets.indexOf(target)
     if (index >= 0) {
@@ -601,7 +610,9 @@ Item {
   }
 
   Component.onCompleted: {
-    root.rememberFocus(Hyprland.activeToplevel)
+    // Seed the focus ranks for windows that were open before the shell started.
+    Hyprland.refreshToplevels()
+    root.observeFocus()
     root.syncSubmap()
     root.restoreRuntimeConfig()
   }

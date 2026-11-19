@@ -33,6 +33,36 @@ test("orders applications and their windows by recent focus", () => {
   assert.deepEqual(apps[1].addresses, ["0x3", "0x1"])
 })
 
+test("restores app order and each app's recent window from compositor history after restart", () => {
+  const windows = [
+    window("0x2", "Nautilus", { focusHistoryID: 2 }),
+    window("0x1", "code", { focusHistoryID: 3 }),
+    window("0x3", "code", { focusHistoryID: 1 }),
+    window("0x4", "browser", { focusHistoryID: 0 }),
+  ]
+  const apps = plain(model.buildApps(windows, entries, ["0x4"]))
+  assert.deepEqual(apps.map(app => app.id), ["browser", "code", "org.gnome.Nautilus"])
+  assert.deepEqual(apps[1].addresses, ["0x3", "0x1"])
+
+  const liveApps = plain(model.buildApps(windows, entries, ["0x2", "0x1"]))
+  assert.deepEqual(liveApps.map(app => app.id), ["org.gnome.Nautilus", "code", "browser"])
+  assert.deepEqual(liveApps[1].addresses, ["0x1", "0x3"])
+})
+
+test("keeps compositor list order for windows without a valid focus rank", () => {
+  const windows = [
+    window("0x1", "code", { focusHistoryID: null }),
+    window("0x2", "code", { focusHistoryID: -1 }),
+    window("0x3", "code", { focusHistoryID: 0.5 }),
+    window("0x4", "code", { focusHistoryID: "0" }),
+    window("0x5", "code"),
+    window("0x6", "code", { focusHistoryID: 4 }),
+    window("0x7", "code", { focusHistoryID: 4 }),
+  ]
+  const [app] = plain(model.buildApps(windows, entries, []))
+  assert.deepEqual(app.addresses, ["0x6", "0x7", "0x1", "0x2", "0x3", "0x4", "0x5"])
+})
+
 test("window cycling keeps a stable order for the focused app across workspaces", () => {
   const first = window("0x1", "code", { workspace: { id: 1 } })
   const second = window("0x2", "CODE", { workspace: { id: 2 } })

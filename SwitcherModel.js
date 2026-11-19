@@ -67,15 +67,24 @@ function buildApps(windows, entries, history, workspaceId) {
     var ordered = []
     for (var i = 0; i < windows.length; i++) {
         var window = windows[i]
-        if (!window || !window.address || (window.lastIpcObject || {}).mapped === false) continue
+        var ipc = window && window.lastIpcObject || {}
+        if (!window || !window.address || ipc.mapped === false) continue
         if (workspaceId !== undefined && workspaceId !== null && !windowInWorkspace(window, workspaceId)) continue
         var app = appForWindow(window, entries)
-        if (app) ordered.push({ app: app, address: window.address })
+        if (!app) continue
+        var index = history.indexOf(window.address)
+        var rank = ipc.focusHistoryID
+        ordered.push({
+            app: app,
+            address: window.address,
+            historyRank: index < 0 ? history.length : index,
+            compositorRank: Number.isSafeInteger(rank) && rank >= 0 ? rank : Infinity,
+        })
     }
+    // The compositor snapshot fills gaps before we have observed live focus.
     ordered.sort(function(a, b) {
-        var ai = history.indexOf(a.address)
-        var bi = history.indexOf(b.address)
-        return (ai < 0 ? history.length : ai) - (bi < 0 ? history.length : bi)
+        if (a.historyRank !== b.historyRank) return a.historyRank - b.historyRank
+        return a.compositorRank === b.compositorRank ? 0 : a.compositorRank - b.compositorRank
     })
     var apps = []
     for (var j = 0; j < ordered.length; j++) {
