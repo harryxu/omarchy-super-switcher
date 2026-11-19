@@ -12,9 +12,21 @@ Item {
   property bool selected: false
   property bool live: false
   property real cornerRadius: 12
+  property bool ready: false
   readonly property var windows: workspace && workspace.toplevels ? workspace.toplevels.values : []
   readonly property var geometry: WorkspaceModel.monitorGeometry(workspace ? workspace.monitor : null)
   readonly property real previewScale: Math.min(width / geometry.width, height / geometry.height)
+
+  function updateReady() {
+    for (var i = 0; i < root.windows.length; i++) {
+      var tile = tiles.itemAt(i)
+      if (!tile || !tile.ready) { root.ready = false; return }
+    }
+    root.ready = true
+  }
+
+  Component.onCompleted: Qt.callLater(root.updateReady)
+  onWindowsChanged: Qt.callLater(root.updateReady)
 
   // Letterbox outputs with different aspect ratios, preserving window layout.
   ClippingRectangle {
@@ -34,13 +46,19 @@ Item {
     contentInsideBorder: false
 
     Repeater {
+      id: tiles
       model: root.windows
+      onItemAdded: Qt.callLater(root.updateReady)
+      onItemRemoved: Qt.callLater(root.updateReady)
 
       Rectangle {
         id: windowTile
         required property var modelData
         required property int index
         readonly property var ipc: modelData ? modelData.lastIpcObject || {} : {}
+        readonly property bool included: !!modelData && ipc.mapped !== false && ipc.hidden !== true
+        readonly property bool ready: !capture.captureSource || capture.hasContent
+        onReadyChanged: Qt.callLater(root.updateReady)
         readonly property var bounds: WorkspaceModel.windowGeometry(modelData, root.geometry, index, root.windows.length)
         x: bounds.x * root.previewScale
         y: bounds.y * root.previewScale
@@ -48,7 +66,7 @@ Item {
         height: Math.max(1, bounds.height * root.previewScale)
         // Floating and focused windows sit above tiled content.
         z: (ipc.floating ? 1 : 0) + (modelData && modelData.activated ? 2 : 0)
-        visible: !!modelData && ipc.mapped !== false && ipc.hidden !== true
+        visible: windowTile.included
         color: Qt.tint(Commons.Color.background, Commons.Util.alpha(Commons.Color.foreground, 0.12))
         border.color: Commons.Util.alpha(Commons.Color.foreground, 0.32)
         border.width: 1
@@ -58,7 +76,7 @@ Item {
           id: capture
           anchors.fill: parent
           anchors.margins: 1
-          captureSource: windowTile.modelData ? windowTile.modelData.wayland : null
+          captureSource: windowTile.included ? windowTile.modelData.wayland : null
           live: root.live
           paintCursor: false
         }

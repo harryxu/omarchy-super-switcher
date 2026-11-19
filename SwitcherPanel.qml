@@ -31,6 +31,8 @@ PanelWindow {
   property var heldModifierKeys: []
   property int shortcutPress: 0
   property int shortcutStep: 1
+  property bool previewsRevealed: false
+  readonly property bool surfaceRevealed: root.visible && (root.appMode || root.previewsRevealed)
   readonly property bool keyboardReady: root.active && root.inputReady && keyCatcher.activeFocus && keyCatcher.Window.active
   readonly property real naturalWidth: root.apps.length ? root.apps.length * root.slotWidth + (root.apps.length - 1) * root.slotSpacing + 2 * root.sidePadding : 0
   readonly property real surfaceWidth: Math.min(root.naturalWidth, Math.max(0, root.width - 2 * root.screenMargin))
@@ -245,12 +247,48 @@ PanelWindow {
     root.quitRequested(root.apps[root.selectedIndex].id)
   }
 
+  function revealPreviewsIfReady() {
+    if (!root.visible || root.appMode || root.previewsRevealed || appRow.width <= 0) return
+    // The initial scroll to the selected tile can land after the first layout.
+    var selected = appRow.itemAtIndex(root.selectedIndex)
+    if (!selected || !selected.previewReady || selected.x >= appRow.contentX + appRow.width
+        || selected.x + selected.width <= appRow.contentX) return
+    // ListView only creates delegates near the viewport. Wait for the tiles
+    // that intersect it, including any partial tiles at its edges.
+    var stride = root.slotWidth + root.slotSpacing
+    var left = appRow.contentX - appRow.originX
+    var first = Math.max(0, Math.floor((left + root.slotSpacing) / stride))
+    var end = Math.min(appRow.count, Math.ceil((left + appRow.width) / stride))
+    if (first >= end) return
+    for (var i = first; i < end; i++) {
+      var tile = appRow.itemAtIndex(i)
+      if (!tile || !tile.previewReady) return
+    }
+    previewDeadline.stop()
+    root.previewsRevealed = true
+  }
+
+  Timer {
+    id: previewDeadline
+    interval: 180
+    onTriggered: if (root.visible) root.previewsRevealed = true
+  }
+
   visible: root.showRequested && root.inputReady
   onVisibleChanged: {
     if (root.visible) {
+      // Take keyboard focus immediately so release works during capture.
       keyCatcher.forceActiveFocus()
       root.scheduleShortcutRepeat()
-    } else shortcutRepeat.stop()
+      if (!root.appMode) {
+        previewDeadline.restart()
+        Qt.callLater(appRow.revealSelection)
+      }
+    } else {
+      shortcutRepeat.stop()
+      previewDeadline.stop()
+      root.previewsRevealed = false
+    }
   }
   color: "transparent"
   exclusionMode: ExclusionMode.Ignore
@@ -258,7 +296,7 @@ PanelWindow {
   WlrLayershell.namespace: "harryxu-super-switcher"
   WlrLayershell.keyboardFocus: root.visible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
   anchors { top: true; bottom: true; left: true; right: true }
-  mask: Region { item: switcherSurface }
+  mask: Region { item: root.surfaceRevealed ? switcherSurface : null }
 
   Ui.PointerMoveGate {
     id: pointerGate
@@ -278,10 +316,10 @@ PanelWindow {
     color: Commons.Util.alpha(Commons.Color.background, root.appMode ? 0.88 : 0.97)
     border.color: Commons.Util.alpha(Commons.Color.foreground, 0.20)
     border.width: 1
-    opacity: root.active ? 1 : 0.96
+    opacity: root.surfaceRevealed ? (root.active ? 1 : 0.96) : 0
 
     Loader {
-      active: root.visible && root.windowHeaderHeight > 0
+      active: root.surfaceRevealed && root.windowHeaderHeight > 0
       anchors.horizontalCenter: parent.horizontalCenter
       y: root.verticalPadding / 2
       height: root.windowHeaderHeight
@@ -332,10 +370,12 @@ PanelWindow {
       function revealSelection() {
         if (currentIndex >= 0 && currentIndex < count)
           positionViewAtIndex(currentIndex, ListView.Contain)
+        root.revealPreviewsIfReady()
       }
       onCurrentIndexChanged: Qt.callLater(appRow.revealSelection)
       onCountChanged: Qt.callLater(appRow.revealSelection)
       onWidthChanged: Qt.callLater(appRow.revealSelection)
+      onContentXChanged: if (!root.appMode && !root.previewsRevealed) Qt.callLater(root.revealPreviewsIfReady)
 
       delegate: Item {
         id: entryTile
@@ -343,6 +383,8 @@ PanelWindow {
         required property int index
         readonly property bool selected: root.selectedIndex === entryTile.index
         readonly property var window: root.windowMode && entryTile.modelData ? entryTile.modelData.window : null
+        readonly property bool previewReady: !!previewLoader.item && previewLoader.item.ready
+        onPreviewReadyChanged: if (!root.appMode && !root.previewsRevealed) Qt.callLater(root.revealPreviewsIfReady)
 
         width: root.slotWidth
         height: root.rowHeight
@@ -359,17 +401,20 @@ PanelWindow {
           visible: entryTile.selected
         }
 
-        SwitcherIcon {
+        Loader {
+          active: root.appMode
           anchors.horizontalCenter: parent.horizontalCenter
           anchors.verticalCenter: parent.verticalCenter
           width: root.iconSize
           height: root.iconSize
-          source: root.appMode ? root.iconSource(modelData) : ""
-          artworkSize: root.artworkSize
-          visible: root.appMode
+          sourceComponent: SwitcherIcon {
+            source: root.iconSource(entryTile.modelData)
+            artworkSize: root.artworkSize
+          }
         }
 
         Loader {
+          id: previewLoader
           active: !root.appMode
           x: 8
           y: 8
@@ -418,6 +463,7 @@ PanelWindow {
         MouseArea {
           id: pointerArea
           anchors.fill: parent
+          enabled: root.surfaceRevealed
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           // Mapping the panel or scrolling the row can put a tile underneath

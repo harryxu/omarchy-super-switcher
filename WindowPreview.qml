@@ -8,6 +8,7 @@ ClippingRectangle {
 
   property var window: null
   property bool selected: false
+  readonly property bool ready: !root.window || !root.window.wayland || capture.hasContent
 
   radius: 12
   color: Commons.Color.background
@@ -19,6 +20,7 @@ ClippingRectangle {
   contentInsideBorder: false
 
   ScreencopyView {
+    id: capture
     anchors.centerIn: parent
     constraintSize: Qt.size(Math.max(1, root.width - 2), Math.max(1, root.height - 2))
     captureSource: root.window ? root.window.wayland : null
