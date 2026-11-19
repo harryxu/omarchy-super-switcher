@@ -13,13 +13,14 @@ Item {
   property var bounds: Geometry.measuredBounds[String(root.displaySource)] || null
   property var grabResult: null
   property bool measuring: false
-  property int sourceRevision: 0
+  property int measurementRevision: 0
   property bool fallbackVisible: false
+  readonly property bool canMeasure: root.visible && !!root.Window.window && root.Window.window.visible
   readonly property bool artworkReady: !!root.bounds || root.fallbackVisible
   readonly property var placement: root.width > 0 ? Geometry.placement(root.bounds, root.sampleSize, root.artworkSize * root.sampleSize / root.width) : null
 
   function measure() {
-    if (original.status !== Image.Ready || root.bounds || root.measuring) return
+    if (!root.canMeasure || original.status !== Image.Ready || root.bounds || root.measuring) return
     var key = String(root.displaySource)
     var cached = Geometry.measuredBounds[key]
     if (cached) {
@@ -30,17 +31,30 @@ Item {
     if (!root.fallbackVisible) fallbackDeadline.start()
     if (!sampler.available) return
     root.measuring = true
-    var revision = root.sourceRevision
+    var revision = root.measurementRevision
     // Capture Qt's actual rendering, then sample it on one fixed pixel grid.
     // Theme image providers can otherwise report different native DPRs.
     var started = original.grabToImage(function(result) {
-      if (!root || revision !== root.sourceRevision) return
-      root.grabResult = result
+      if (!root || !root.canMeasure || revision !== root.measurementRevision) return
       sampler.loadImage(result.url)
+      root.grabResult = result
       // Item grabs can load synchronously without an imageLoaded signal.
       sampler.requestPaint()
     }, Qt.size(root.sampleSize, root.sampleSize))
     if (!started) root.measuring = false
+  }
+
+  function cancelMeasurement() {
+    root.measurementRevision++
+    fallbackDeadline.stop()
+    if (root.grabResult) sampler.unloadImage(root.grabResult.url)
+    root.grabResult = null
+    root.measuring = false
+  }
+
+  onCanMeasureChanged: {
+    if (root.canMeasure) Qt.callLater(root.measure)
+    else root.cancelMeasurement()
   }
 
   Timer {
@@ -88,7 +102,7 @@ Item {
     onImageLoaded: requestPaint()
     onPaint: sample()
     function sample() {
-      if (!root.grabResult || !isImageLoaded(root.grabResult.url)) return
+      if (!root.canMeasure || !root.grabResult || !isImageLoaded(root.grabResult.url)) return
       var ctx = getContext("2d")
       ctx.clearRect(0, 0, root.sampleSize, root.sampleSize)
       ctx.drawImage(root.grabResult.url, 0, 0, root.sampleSize, root.sampleSize)
@@ -108,13 +122,9 @@ Item {
   }
 
   onDisplaySourceChanged: {
-    root.sourceRevision++
-    fallbackDeadline.stop()
+    root.cancelMeasurement()
     root.bounds = Geometry.measuredBounds[String(root.displaySource)] || null
     root.fallbackVisible = false
-    if (root.grabResult) sampler.unloadImage(root.grabResult.url)
-    root.grabResult = null
-    root.measuring = false
     Qt.callLater(root.measure)
   }
   onSourceChanged: root.displaySource = String(source) ? source : Qt.resolvedUrl("assets/default-app.svg")

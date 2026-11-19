@@ -7,12 +7,40 @@ TestCase {
   id: testCase
   name: "SwitcherIconRendering"
   when: windowShown
+  visible: true
   width: 512
   height: 512
 
   Component {
     id: iconComponent
     SwitcherIcon {}
+  }
+
+  Component {
+    id: iconWindow
+    Window {
+      id: host
+      width: 160
+      height: 160
+      visible: false
+      property alias icon: sample
+      property int hiddenAttempts: 0
+      property bool closeOnGrab: false
+      property bool closedOnGrab: false
+
+      SwitcherIcon {
+        id: sample
+        width: 96
+        height: 96
+        source: Qt.resolvedUrl("fixtures/icon-padded.svg")
+        onMeasuringChanged: if (measuring && !host.visible) host.hiddenAttempts++
+        onGrabResultChanged: if (grabResult && host.closeOnGrab) {
+          host.closeOnGrab = false
+          host.hide()
+          host.closedOnGrab = true
+        }
+      }
+    }
   }
 
   Canvas {
@@ -77,12 +105,54 @@ TestCase {
     fuzzyCompare(Math.max(bounds.width, bounds.height) * 96 / 210, 56, 2)
   }
 
+  function makeColdIconWindow() {
+    delete Geometry.measuredBounds[String(Qt.resolvedUrl("fixtures/icon-padded.svg"))]
+    var window = createTemporaryObject(iconWindow, testCase)
+    verify(window !== null)
+    return window
+  }
+
+  function test_hiddenWindowWaitsForMapping() {
+    var window = makeColdIconWindow()
+    wait(70)
+    compare(window.hiddenAttempts, 0)
+    compare(window.icon.bounds, null)
+    window.show()
+    tryVerify(function() { return !!window.icon.bounds }, 3000)
+  }
+
+  function test_closeDiscardsUnsampledGrabAndReopeningRetries() {
+    var window = makeColdIconWindow()
+    window.closeOnGrab = true
+    window.show()
+    tryVerify(function() { return window.closedOnGrab }, 3000)
+    compare(window.icon.grabResult, null)
+    verify(Geometry.measuredBounds[String(window.icon.displaySource)] === undefined)
+    window.show()
+    tryVerify(function() { return !!window.icon.bounds }, 3000)
+  }
+
+  function test_blankGrabDoesNotPopulateCache() {
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="210" height="210"/>'
+    var source = "data:image/svg+xml," + encodeURIComponent(svg)
+    for (var pass = 0; pass < 2; pass++) {
+      var icon = createTemporaryObject(iconComponent, testCase, { width: 96, height: 96, source: source })
+      verify(icon !== null)
+      tryVerify(function() { return icon.artworkReady && !icon.measuring }, 3000)
+      compare(icon.displaySource, icon.source)
+      compare(icon.bounds, null)
+      verify(Geometry.measuredBounds[String(icon.source)] === undefined)
+      icon.destroy()
+    }
+  }
+
   function test_artwork_data() {
     return [
       { tag: "solid-96", file: "icon-solid.svg", size: 96 },
       { tag: "padded-96", file: "icon-padded.svg", size: 96 },
       { tag: "solid-105", file: "icon-solid.svg", size: 105 },
-      { tag: "padded-105", file: "icon-padded.svg", size: 105 }
+      { tag: "padded-105", file: "icon-padded.svg", size: 105 },
+      { tag: "narrow-96", file: "icon-narrow.svg", size: 96 }
     ]
   }
 
@@ -104,11 +174,16 @@ TestCase {
         compare(icon.bounds.y, 0)
         compare(icon.bounds.width, 210)
         compare(icon.bounds.height, 210)
-      } else {
+      } else if (data.file === "icon-padded.svg") {
         fuzzyCompare(icon.bounds.x, 12, 1)
         fuzzyCompare(icon.bounds.y, 34, 1)
         fuzzyCompare(icon.bounds.width, 140, 1)
         fuzzyCompare(icon.bounds.height, 100, 1)
+      } else {
+        fuzzyCompare(icon.bounds.x, 98, 1)
+        fuzzyCompare(icon.bounds.y, 25, 1)
+        fuzzyCompare(icon.bounds.width, 14, 1)
+        fuzzyCompare(icon.bounds.height, 160, 1)
       }
       var bounds = renderedBounds(icon)
       var ratio = data.size / 210
