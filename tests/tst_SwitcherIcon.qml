@@ -56,9 +56,25 @@ TestCase {
     icon.source = Qt.resolvedUrl("fixtures/icon-solid.svg")
     tryVerify(function() { return icon.bounds !== null }, 3000)
     icon.source = ""
-    tryVerify(function() { return icon.bounds !== null }, 3000)
+    verify(icon.bounds !== null, "A source change must immediately reuse the fallback icon's cached size")
     verify(String(icon.displaySource).endsWith("/assets/default-app.svg"))
     verify(renderedBounds(icon) !== null)
+  }
+
+  function test_lateMeasurementKeepsVisibleFallbackSize() {
+    var source = Qt.resolvedUrl("fixtures/icon-padded.svg")
+    delete Geometry.measuredBounds[String(source)]
+    var icon = createTemporaryObject(iconComponent, testCase, { width: 96, height: 96, source: source })
+    verify(icon !== null)
+    verify(!icon.artworkReady)
+
+    // Simulate the deadline firing before the first measurement completes.
+    icon.fallbackVisible = true
+    verify(icon.artworkReady)
+    tryVerify(function() { return !!Geometry.measuredBounds[String(source)] }, 3000)
+    compare(icon.bounds, null)
+    var bounds = renderedBounds(icon)
+    fuzzyCompare(Math.max(bounds.width, bounds.height) * 96 / 210, 56, 2)
   }
 
   function test_artwork_data() {
@@ -79,7 +95,10 @@ TestCase {
         width: data.size, height: data.size, source: source
       })
       verify(icon !== null)
+      if (pass === 0) verify(!icon.artworkReady, "Cold artwork waits for its fitted size")
+      else verify(icon.bounds !== null, "Cached artwork must have its fitted size immediately")
       tryVerify(function() { return icon.bounds !== null }, 3000)
+      verify(icon.artworkReady)
       if (data.file === "icon-solid.svg") {
         compare(icon.bounds.x, 0)
         compare(icon.bounds.y, 0)
