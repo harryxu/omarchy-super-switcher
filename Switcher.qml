@@ -17,8 +17,8 @@ Item {
   property string pendingFocusTarget: ""
   property bool pendingWorkspaceFocus: false
   property var pendingAppWorkspaceId: null
-  property bool pendingAppFocus: false
-  property var sentAppFocusTargets: []
+  property bool pendingSwitchFocus: false
+  property var sentSwitchFocusTargets: []
   property string pendingCursorPosition: ""
   property bool currentWorkspaceAppsOnly: false
   property int appSessionWorkspaceId: 0
@@ -98,40 +98,40 @@ Item {
     return null
   }
 
-  function currentAppWindow(workspaceId) {
-    var targets = root.sentAppFocusTargets
-    var target = root.pendingAppFocus ? root.pendingFocusTarget : targets[targets.length - 1]
+  function currentSwitchWindow(workspaceId) {
+    var targets = root.sentSwitchFocusTargets
+    var target = root.pendingSwitchFocus ? root.pendingFocusTarget : targets[targets.length - 1]
     var window = target ? root.windowForFocusTarget(target) : null
     if (window && (workspaceId === null || SwitcherModel.windowInWorkspace(window, workspaceId)))
       return window
     return Hyprland.activeToplevel
   }
 
-  function clearAppFocus() {
-    if (root.pendingAppFocus) root.pendingFocusTarget = ""
-    root.pendingAppFocus = false
-    root.sentAppFocusTargets = []
-    appFocusExpiry.stop()
+  function clearSwitchFocus() {
+    if (root.pendingSwitchFocus) root.pendingFocusTarget = ""
+    root.pendingSwitchFocus = false
+    root.sentSwitchFocusTargets = []
+    focusExpiry.stop()
   }
 
-  function expireAppFocus() {
-    root.sentAppFocusTargets = []
-    if (!root.pendingAppFocus) root.rememberFocus(Hyprland.activeToplevel)
+  function expireSwitchFocus() {
+    root.sentSwitchFocusTargets = []
+    if (!root.pendingSwitchFocus) root.rememberFocus(Hyprland.activeToplevel)
   }
 
   function observeFocus() {
     var window = Hyprland.activeToplevel
     var target = root.windowFocusTarget(window ? window.address : "")
     if (!target) return
-    var targets = root.sentAppFocusTargets
+    var targets = root.sentSwitchFocusTargets
     var index = targets.indexOf(target)
     if (index >= 0) {
       targets.splice(0, index + 1)
-      if (!targets.length) appFocusExpiry.stop()
+      if (!targets.length) focusExpiry.stop()
       // An earlier switch can report focus after the next tap has committed.
-      if (root.pendingAppFocus || targets.length) return
+      if (root.pendingSwitchFocus || targets.length) return
     } else {
-      root.clearAppFocus()
+      root.clearSwitchFocus()
     }
     root.rememberFocus(window)
   }
@@ -163,7 +163,7 @@ Item {
     }
     root.currentWorkspaceAppsOnly = !!currentWorkspaceOnly
     root.appSessionWorkspaceId = Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : 0
-    var window = root.currentAppWindow(root.currentWorkspaceAppsOnly ? root.appSessionWorkspaceId : null)
+    var window = root.currentSwitchWindow(root.currentWorkspaceAppsOnly ? root.appSessionWorkspaceId : null)
     root.rememberFocus(window)
     var apps = root.sessionApps()
     if (!apps.length) { panel.cancel(); return }
@@ -181,6 +181,9 @@ Item {
     var app = SwitcherModel.appForWindow(current, entries)
     var windows = SwitcherModel.buildWindows(Hyprland.toplevels.values || [], entries, app ? app.id : "")
     if (windows.length < 2) { panel.cancel(); return }
+    // A pending switch in this app can be newer than the reported focus.
+    var requested = root.currentSwitchWindow(null)
+    if (windows.some(function(entry) { return entry.window === requested })) current = requested
     root.windowSessionApp = app
     panel.open(windows, SwitcherModel.initialIndex(windows, current.address, step), heldKeys, "windows")
   }
@@ -236,7 +239,7 @@ Item {
     var workspaces = root.workspaceEntries()
     for (var i = 0; i < workspaces.length; i++) {
       if (workspaces[i].id !== id) continue
-      root.clearAppFocus()
+      root.clearSwitchFocus()
       root.pendingFocusTarget = id
       root.pendingWorkspaceFocus = true
       restoreCursorWarps.stop()
@@ -265,14 +268,14 @@ Item {
     }
   }
 
-  function activateWindow(rawAddress, workspaceId, fromAppSwitcher) {
+  function activateWindow(rawAddress, workspaceId, fromSwitcher) {
     var target = root.windowFocusTarget(rawAddress)
     if (!target) return
-    if (!fromAppSwitcher) root.clearAppFocus()
+    if (!fromSwitcher) root.clearSwitchFocus()
     root.pendingFocusTarget = target
     root.pendingWorkspaceFocus = false
     root.pendingAppWorkspaceId = workspaceId
-    root.pendingAppFocus = !!fromAppSwitcher
+    root.pendingSwitchFocus = !!fromSwitcher
     root.recentWindows = SwitcherModel.touchWindow(root.recentWindows, rawAddress)
     restoreCursorWarps.stop()
     if (!cursorCapture.running) cursorCapture.running = true
@@ -405,7 +408,7 @@ Item {
         // A reload removes the mode's bindings. End the current session before
         // restoring them, rather than leave a visible panel with drag enabled.
         panel.cancel()
-        root.clearAppFocus()
+        root.clearSwitchFocus()
         Qt.callLater(root.restoreRuntimeConfig)
       } else if (String(event.name) === "submap"
                  && String(event.data) !== SwitcherKeys.submapName
@@ -448,7 +451,7 @@ Item {
       return root.iconSource(app || { id: "", icon: "" })
     }
     onActivated: function(appId) { root.activateApp(appId) }
-    onWindowActivated: function(address) { root.activateWindow(address, null) }
+    onWindowActivated: function(address) { root.activateWindow(address, null, true) }
     onWorkspaceActivated: function(workspaceId) { root.activateWorkspace(workspaceId) }
     onAppScopeChanged: function(currentWorkspaceOnly) { root.setAppScope(currentWorkspaceOnly) }
     onQuitRequested: function(appId) { root.quitApp(appId) }
@@ -493,9 +496,9 @@ Item {
   }
 
   Timer {
-    id: appFocusExpiry
+    id: focusExpiry
     interval: 600
-    onTriggered: root.expireAppFocus()
+    onTriggered: root.expireSwitchFocus()
   }
 
   HyprlandProcess {
@@ -508,9 +511,9 @@ Item {
         return
       }
       var target = root.pendingFocusTarget
-      var appFocus = root.pendingAppFocus
+      var switchFocus = root.pendingSwitchFocus
       root.pendingFocusTarget = ""
-      root.pendingAppFocus = false
+      root.pendingSwitchFocus = false
       if (root.pendingWorkspaceFocus) {
         // Resolve again after the asynchronous cursor capture.
         var workspaces = root.workspaceEntries()
@@ -520,25 +523,24 @@ Item {
           break
         }
       } else {
-        if (appFocus) {
-          // Recheck after the asynchronous cursor capture. An app can have a
-          // newer window elsewhere, or its selected window can move away.
+        if (switchFocus) {
+          // The selected window may close or move while cursor capture runs.
           var window = root.windowForFocusTarget(target)
           var workspaceId = root.pendingAppWorkspaceId
           var allowed = workspaceId === null || (Hyprland.focusedWorkspace
             && Hyprland.focusedWorkspace.id === workspaceId && SwitcherModel.windowInWorkspace(window, workspaceId))
           if (!window || !allowed) {
-            if (!root.sentAppFocusTargets.length) root.rememberFocus(Hyprland.activeToplevel)
+            if (!root.sentSwitchFocusTargets.length) root.rememberFocus(Hyprland.activeToplevel)
             restoreCursorWarps.restart()
             return
           }
-          var targets = root.sentAppFocusTargets
+          var targets = root.sentSwitchFocusTargets
           var current = Hyprland.activeToplevel
           // Returning to the reported window can still follow an unreported switch away.
           if (targets[targets.length - 1] !== target
               && (targets.length || root.windowFocusTarget(current ? current.address : "") !== target)) {
             targets.push(target)
-            appFocusExpiry.start()
+            focusExpiry.start()
           }
         }
         Hyprland.dispatch("hl.dsp.focus({ window = \"" + target + "\" })")
