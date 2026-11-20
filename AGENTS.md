@@ -95,7 +95,8 @@ Verify the plugin and its bindings in the running session.
    `https://github.com/harryxu/omarchy-super-switcher`, and the full 40-character
    SHA of the remote default branch HEAD. Check **Verification acknowledgment**.
    Use **Standard installation acknowledgment** when requesting removal of an
-   explicit manual installation override. [Marketplace update form](https://github.com/omacom/omarchy-plugin-marketplace/issues/new?template=verify-plugin.yml)
+   explicit manual installation override. [Marketplace update form](https://github.com/omacom/omarchy-plugin-marketplace/issues/new?template=verify-plugin.yml). 
+  Make sure to check both Verification acknowledgment and Standard installation acknowledgment in the issue.
 5. Verify that the marketplace bot reports Quattro compatibility and the
    automated security baseline for the submitted SHA. After maintainer approval
    and deployment, verify the version, snapshot commit, and **Standard Installation**
