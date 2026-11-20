@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.5.0
+
+### Changed
+
+- Use Omarchy's shell socket for shortcut events on Omarchy 4.5 and later,
+  with native Quickshell IPC support on earlier Quattro releases.
+
+### Fixed
+
+- Keep rapid app and window switches moving through the list even when
+  Hyprland reports focus after the next tap.
+- Restore the app switcher's most-recently-used order after a shell restart.
+- Activate the selection when the modifier is released while the overlay is
+  taking keyboard focus. Keep the current-workspace app filter in sync with
+  the A key over the shell socket.
+- Wait for the first window or workspace preview frames before showing the
+  overlay, with a short timeout if a capture stalls.
+- Keep app icons at a stable size when the switcher first appears or reopens.
+
 ## v0.4.0
 
 ### Added
