@@ -90,6 +90,10 @@ hyprctl reload
 
 Reloading Hyprland restores the bindings from your configuration.
 
+## Acknowledgments
+
+This project was originally based on and adapted from [ifubaraboye/omarchy-dock](https://github.com/ifubaraboye/omarchy-dock).
+
 ## License
 
 [MIT](LICENSE)
