@@ -83,6 +83,18 @@ omarchy-shell harryxu.super-switcher setWorkspacePreviewMode live
 omarchy-shell harryxu.super-switcher setWorkspacePreviewMode static
 ```
 
+## Shortcut modifier settings
+
+Apps and windows use `Super` by default, and workspaces use `Alt/Option`.
+You can swap the two base modifiers while keeping `Tab`, `` ` ``, `Shift`, and
+`A` unchanged:
+
+```bash
+omarchy-shell harryxu.super-switcher shortcutModifiers
+omarchy-shell harryxu.super-switcher setShortcutModifiers alt super
+omarchy-shell harryxu.super-switcher setShortcutModifiers super alt
+```
+
 ## Removal
 
 ```bash

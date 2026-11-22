@@ -27,6 +27,8 @@ Item {
   property var quitRequests: []
   property var pendingCycles: []
   property string workspacePreviewMode: "static"
+  property string appModifier: "super"
+  property string workspaceModifier: "alt"
 
   FileView {
     id: previewModeFile
@@ -39,13 +41,36 @@ Item {
     onLoadFailed: root.workspacePreviewMode = "static"
   }
 
+  FileView {
+    id: shortcutModifiersFile
+    path: StandardPaths.writableLocation(StandardPaths.ConfigLocation) + "/omarchy/super-switcher-modifiers"
+    watchChanges: true
+    printErrors: false
+    blockWrites: true
+    onFileChanged: reload()
+    onLoaded: {
+      var parsed = SwitcherKeys.parseModifierConfig(text())
+      root.applyShortcutModifiers(parsed.apps, parsed.workspaces)
+    }
+    onLoadFailed: root.applyShortcutModifiers("super", "alt")
+  }
+
+  function applyShortcutModifiers(apps, workspaces) {
+    if (root.appModifier === apps && root.workspaceModifier === workspaces) return
+    root.appModifier = apps
+    root.workspaceModifier = workspaces
+    if (panel.active) panel.cancel()
+    root.syncSubmap()
+    root.restoreRuntimeConfig()
+  }
+
   function syncSubmap() {
     // Serialize enter/leave commands. A rapid close/reopen must not let an
     // older leave command reset the new session's input mode.
     if (!panel.showRequested) panel.inputReady = false
     if (submapControl.running) return
     submapControl.entering = panel.showRequested
-    submapControl.command = ["hyprctl", "eval", SwitcherKeys.submapCommand(panel.showRequested)]
+    submapControl.command = ["hyprctl", "eval", SwitcherKeys.submapCommand(panel.showRequested, root.appModifier, root.workspaceModifier)]
     submapControl.running = true
   }
 
@@ -149,7 +174,7 @@ Item {
     // Theme changes reload Hyprland without recreating this plugin. The
     // compositor discards runtime bindings and layer rules during that reload.
     if (!layerRule.running) layerRule.running = true
-    if (!registerBindings.running) registerBindings.running = true
+    registerBindings.request()
     bindRetry.attempts = 0
     bindRetry.restart()
   }
@@ -399,6 +424,21 @@ Item {
       return previewModeFile.loaded && previewModeFile.text().trim() === mode
         ? mode : "Could not save workspace preview mode."
     }
+    function shortcutModifiers(): string { return root.appModifier + " " + root.workspaceModifier }
+    function setShortcutModifiers(apps: string, workspaces: string): string {
+      var nextApps = SwitcherKeys.normalizeModifier(apps, "")
+      var nextWorkspaces = SwitcherKeys.normalizeModifier(workspaces, "")
+      if (!nextApps || !nextWorkspaces || nextApps === nextWorkspaces)
+        return "Expected distinct modifiers: super alt or alt super."
+      var value = nextApps + " " + nextWorkspaces
+      shortcutModifiersFile.setText(value + "\n")
+      shortcutModifiersFile.reload()
+      shortcutModifiersFile.waitForJob()
+      if (!shortcutModifiersFile.loaded || shortcutModifiersFile.text().trim() !== value)
+        return "Could not save shortcut modifiers."
+      root.applyShortcutModifiers(nextApps, nextWorkspaces)
+      return value
+    }
     // All switchers share this IPC command, including during the hold delay.
     function altTabCancel(): void { panel.cancel() }
   }
@@ -593,7 +633,17 @@ Item {
 
   HyprlandProcess {
     id: registerBindings
-    command: ["hyprctl", "eval", SwitcherKeys.bindingCommand()]
+    property bool pending: false
+    command: ["hyprctl", "eval", SwitcherKeys.bindingCommand(root.appModifier, root.workspaceModifier)]
+    function request() {
+      if (running) pending = true
+      else running = true
+    }
+    onExited: {
+      if (!pending) return
+      pending = false
+      running = true
+    }
   }
 
   // Shell startup or reload hooks can reapply config bindings after us.
@@ -605,7 +655,7 @@ Item {
     onTriggered: {
       bindRetry.attempts++
       if (bindRetry.attempts > 8) bindRetry.stop()
-      else if (!registerBindings.running) registerBindings.running = true
+      else if (!registerBindings.running) registerBindings.request()
     }
   }
 
@@ -619,5 +669,5 @@ Item {
 
   // Cleanup must outlive this component, but the detached helper has a deadline.
   Component.onDestruction: Quickshell.execDetached(["timeout", "--signal=KILL", "1s",
-    "hyprctl", "eval", SwitcherKeys.submapCommand(false)])
+    "hyprctl", "eval", SwitcherKeys.submapCommand(false, root.appModifier, root.workspaceModifier)])
 }

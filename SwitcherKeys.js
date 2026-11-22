@@ -50,19 +50,53 @@ function shortcutHeldCommand(press) {
     + ' and hl.get_current_submap() == "' + submapName + '" and shortcut.is_held()'
 }
 
-function bindingCommand() {
+function normalizeModifier(value, fallback) {
+  var name = String(value || "").trim().toLowerCase()
+  if (name === "super") return "super"
+  if (name === "alt" || name === "opt" || name === "option") return "alt"
+  return fallback || ""
+}
+
+function parseModifierConfig(text) {
+  var parts = String(text || "").trim().split(/\s+/)
+  if (parts.length === 2) {
+    var apps = normalizeModifier(parts[0], "")
+    var workspaces = normalizeModifier(parts[1], "")
+    if (apps && workspaces && apps !== workspaces)
+      return { apps: apps, workspaces: workspaces }
+  }
+  return { apps: "super", workspaces: "alt" }
+}
+
+function bindingCommand(appModifier, workspaceModifier) {
   // hl.unbind (used by o.rebind) removes a chord across ALL submaps in
   // Hyprland 0.56. Register all global chords before their submap copies.
   // Escape is registered once per compositor Lua state: unbinding it would
   // also remove unrelated Escape shortcuts belonging to the user.
+  var appKey = normalizeModifier(appModifier, "super")
+  var workspaceKey = normalizeModifier(workspaceModifier, "alt")
+  if (appKey === workspaceKey) {
+    appKey = "super"
+    workspaceKey = "alt"
+  }
+  var appMod = appKey.toUpperCase()
+  var wsMod = workspaceKey.toUpperCase()
   var shortcuts = [
-    ["SUPER + TAB", "App switcher next", 1, "apps"],
-    ["SUPER + SHIFT + TAB", "App switcher prev", -1, "apps"],
-    ["SUPER + grave", "Window switcher next", 1, "windows"],
-    ["SUPER + SHIFT + grave", "Window switcher prev", -1, "windows"],
-    ["ALT + TAB", "Workspace switcher next", 1, "workspaces"],
-    ["ALT + SHIFT + TAB", "Workspace switcher prev", -1, "workspaces"]
+    [appMod + " + TAB", "App switcher next", 1, "apps"],
+    [appMod + " + SHIFT + TAB", "App switcher prev", -1, "apps"],
+    [appMod + " + grave", "Window switcher next", 1, "windows"],
+    [appMod + " + SHIFT + grave", "Window switcher prev", -1, "windows"],
+    [wsMod + " + TAB", "Workspace switcher next", 1, "workspaces"],
+    [wsMod + " + SHIFT + TAB", "Workspace switcher prev", -1, "workspaces"]
   ]
+  var nextChords = shortcuts.map(function(shortcut) {
+    return "[" + JSON.stringify(shortcut[0]) + "] = true"
+  }).join(", ")
+  var unbindStale = "local prev_chords = _G.harryxu_super_switcher_chords or {} "
+    + "local next_chords = {" + nextChords + "} "
+    + "for chord in pairs(prev_chords) do "
+    + "if not next_chords[chord] then hl.unbind(chord) end end "
+    + "_G.harryxu_super_switcher_chords = next_chords "
   var globals = shortcuts.map(function(shortcut) {
     return "o.rebind(\"" + shortcut[0] + "\", \"" + shortcut[1] + "\", function() "
       + cycleCommand(shortcut[2], shortcut[3], true) + " end) "
@@ -73,7 +107,7 @@ function bindingCommand() {
   }).join("")
   // The submap suppresses Super+click window drags while the panel is open.
   // Escape resets it before calling IPC, even if the shell has crashed.
-  return trackShortcutCommand() + globals + "hl.define_submap(\"" + submapName + "\", function() " + submap
+  return trackShortcutCommand() + unbindStale + globals + "hl.define_submap(\"" + submapName + "\", function() " + submap
     + "if not _G.harryxu_super_switcher_escape then "
     + "hl.bind(\"Escape\", function() "
     + "hl.dispatch(hl.dsp.submap(\"reset\")) "
@@ -82,10 +116,10 @@ function bindingCommand() {
     + "_G.harryxu_super_switcher_escape = true end end)"
 }
 
-function submapCommand(active) {
+function submapCommand(active, appModifier, workspaceModifier) {
   if (active) {
     // Also covers IPC opens that race the startup/reload registration process.
-    return bindingCommand() + " hl.dispatch(hl.dsp.submap(\"" + submapName + "\"))"
+    return bindingCommand(appModifier, workspaceModifier) + " hl.dispatch(hl.dsp.submap(\"" + submapName + "\"))"
   }
   // Never reset another application's submap during cleanup or shell startup.
   return "if hl.get_current_submap() == \"" + submapName + "\" then "
@@ -154,5 +188,6 @@ function releaseCommand(codes, generation, trackAppScope, revision) {
 if (typeof module !== "undefined") module.exports = {
   cycleCommand: cycleCommand, bindingCommand: bindingCommand, shortcutHeldCommand: shortcutHeldCommand,
   parseHeldKeys: parseHeldKeys, pendingCommand: pendingCommand, releaseCommand: releaseCommand,
-  submapName: submapName, submapCommand: submapCommand
+  submapName: submapName, submapCommand: submapCommand,
+  normalizeModifier: normalizeModifier, parseModifierConfig: parseModifierConfig
 }
