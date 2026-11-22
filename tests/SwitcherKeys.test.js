@@ -48,6 +48,11 @@ hl = {
     table.insert(bindings, {chord = chord, callback = callback,
       options = options or {}, submap = definingSubmap})
   end,
+  unbind = function(chord)
+    for i = #bindings, 1, -1 do
+      if bindings[i].chord == chord then table.remove(bindings, i) end
+    end
+  end,
   define_submap = function(name, callback)
     local previous = definingSubmap
     definingSubmap = name
@@ -359,4 +364,61 @@ test("cleanup leaves the switcher mode and does not reset someone else's mode", 
     currentSubmap = "user-mode"
     ${keys.submapCommand(false)}
     assert(currentSubmap == "user-mode")`)
+})
+
+test("modifier config parsing normalizes valid pairs and falls back to defaults", () => {
+  assert.deepEqual(plain(keys.parseModifierConfig("alt super\n")), { apps: "alt", workspaces: "super" })
+  assert.deepEqual(plain(keys.parseModifierConfig("OPT Super")), { apps: "alt", workspaces: "super" })
+  assert.deepEqual(plain(keys.parseModifierConfig("super alt")), { apps: "super", workspaces: "alt" })
+  for (const invalid of ["", "super", "super super", "alt alt", "ctrl alt", "alt super extra"]) {
+    assert.deepEqual(plain(keys.parseModifierConfig(invalid)), { apps: "super", workspaces: "alt" })
+  }
+})
+
+test("custom modifier configuration swaps app/window and workspace base keys and unbinds stale chords", () => {
+  lua(`
+    hl.bind("SUPER + mouse:272", function() end, {mouse = true})
+    hl.bind("ALT + grave", function() end)
+    ${keys.bindingCommand("super", "alt")}
+    ${keys.bindingCommand("alt", "super")}
+    local counts = {}
+    for _, binding in ipairs(bindings) do
+      local key = binding.submap .. ":" .. binding.chord
+      counts[key] = (counts[key] or 0) + 1
+    end
+    for _, map in ipairs({"", "${keys.submapName}"}) do
+      assert(counts[map .. ":ALT + TAB"] == 1)
+      assert(counts[map .. ":ALT + SHIFT + TAB"] == 1)
+      assert(counts[map .. ":ALT + grave"] == 1)
+      assert(counts[map .. ":ALT + SHIFT + grave"] == 1)
+      assert(counts[map .. ":SUPER + TAB"] == 1)
+      assert(counts[map .. ":SUPER + SHIFT + TAB"] == 1)
+      assert(counts[map .. ":SUPER + grave"] == nil)
+      assert(counts[map .. ":SUPER + SHIFT + grave"] == nil)
+    end
+    assert(counts[":SUPER + mouse:272"] == 1)
+    ${keys.bindingCommand("super", "alt")}
+    local restored = {}
+    for _, binding in ipairs(bindings) do
+      restored[binding.submap .. ":" .. binding.chord] = (restored[binding.submap .. ":" .. binding.chord] or 0) + 1
+    end
+    for _, map in ipairs({"", "${keys.submapName}"}) do
+      assert(restored[map .. ":SUPER + grave"] == 1)
+      assert(restored[map .. ":SUPER + SHIFT + grave"] == 1)
+      assert(restored[map .. ":ALT + grave"] == nil)
+      assert(restored[map .. ":ALT + SHIFT + grave"] == nil)
+    end
+  `)
+
+  for (const [chord, step, mode] of [
+    ["ALT + TAB", 1, "apps"],
+    ["ALT + SHIFT + TAB", -1, "apps"],
+    ["ALT + grave", 1, "windows"],
+    ["ALT + SHIFT + grave", -1, "windows"],
+    ["SUPER + TAB", 1, "workspaces"],
+    ["SUPER + SHIFT + TAB", -1, "workspaces"]
+  ]) {
+    assert.equal(lua(`${keys.submapCommand(true, "alt", "super")} invoke("${chord}", "${keys.submapName}")`, [64]),
+      `omarchy-shell -q harryxu.super-switcher shortcutPressed ${step} 64 ${mode} 1`)
+  }
 })
