@@ -56,23 +56,9 @@ If `Q` brings up a save dialog, the switcher closes and focuses it.
 
 ![Workspace switcher showing Browse, Code, and Files in a demo session](assets/screenshots/workspace-switcher.png)
 
-## Applications
+## Customization
 
-The switcher lists each running app once, most recently used first. Switching
-to an app focuses its most recently used window.
-
-## Windows
-
-The window switcher cycles through the focused app's windows across workspaces.
-Keep holding Super to see still previews with the selected window's title below
-its thumbnail. The panel only opens when the app has at least two windows.
-
-## Workspaces
-
-The switcher shows regular workspaces across all monitors, including empty
-ones. It lists numbered workspaces in order, then named workspaces alphabetically.
-
-## Workspace preview settings
+### Workspace preview settings
 
 Previews show still images by default. Live previews update as you browse.
 Changes apply the next time you open the workspace switcher.
@@ -83,7 +69,7 @@ omarchy-shell harryxu.super-switcher setWorkspacePreviewMode live
 omarchy-shell harryxu.super-switcher setWorkspacePreviewMode static
 ```
 
-## Shortcut modifier settings
+### Shortcut modifier settings
 
 Apps and windows use `Super` by default, and workspaces use `Alt/Option`.
 You can swap the two base modifiers while keeping `Tab`, `` ` ``, `Shift`, and
