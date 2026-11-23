@@ -216,3 +216,32 @@ test("uses native icons and known aliases with a neutral fallback", () => {
   assert.equal(model.iconName({ id: "code.desktop" }), "vscode")
   assert.equal(model.iconName({ id: "unrecognized" }), "application-x-executable")
 })
+
+test("identifies classless Wayland windows from their titles and desktop entries", () => {
+  const feishuEntries = entries.concat([
+    { id: "bytedance-feishu", name: "Feishu", genericName: "Feishu", icon: "bytedance-feishu" },
+    { id: "org.example.Chat", name: "Localized Chat", genericName: "Team Messenger", icon: "team-chat" },
+  ])
+  const main = window("0x10", "", { class: "", initialClass: "", initialTitle: "Feishu", title: "General - Feishu" })
+  const meeting = window("0x11", "", { class: "", initialClass: "", initialTitle: "Feishu", title: "Weekly Sync" })
+  const generic = window("0x12", "", { class: "", initialClass: "", initialTitle: "Team Messenger", title: "Team Messenger" })
+  const untitled = window("0x13", "", { class: "", initialClass: "", initialTitle: "", title: "" })
+  const unknown = window("0x14", "", { class: "", initialClass: "", initialTitle: "Scratch Pad", title: "Scratch Pad" })
+
+  const apps = plain(model.buildApps([main, meeting, generic, untitled, unknown], feishuEntries, []))
+  assert.deepEqual(apps, [
+    { id: "bytedance-feishu", name: "Feishu", icon: "bytedance-feishu", addresses: ["0x10", "0x11"] },
+    { id: "org.example.Chat", name: "Localized Chat", icon: "team-chat", addresses: ["0x12"] },
+    { id: "Scratch Pad", name: "Scratch Pad", icon: "", addresses: ["0x14"] },
+  ])
+
+  const localizedEntries = [
+    { id: "bytedance-feishu", name: "飞书", genericName: "飞书", icon: "bytedance-feishu" },
+  ]
+  assert.deepEqual(plain(model.appForWindow(main, localizedEntries)), {
+    id: "bytedance-feishu",
+    name: "飞书",
+    icon: "bytedance-feishu",
+  })
+  assert.equal(model.appForWindow(untitled, feishuEntries), null)
+})

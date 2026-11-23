@@ -37,6 +37,31 @@ function entryFor(rawId, entries) {
     return null
 }
 
+function entryForTitle(rawTitle, entries) {
+    var title = String(rawTitle || "").trim()
+    if (!title) return null
+    var exact = entryFor(title, entries)
+    if (exact) return exact
+    var lower = title.toLowerCase()
+    for (var i = 0; i < entries.length; i++) {
+        if (String(entries[i].name || "").trim().toLowerCase() === lower) return entries[i]
+    }
+    for (var j = 0; j < entries.length; j++) {
+        if (String(entries[j].genericName || "").trim().toLowerCase() === lower) return entries[j]
+    }
+    if (/^[a-z0-9]{3,}$/.test(lower)) {
+        for (var k = 0; k < entries.length; k++) {
+            var id = normalizeId(entries[k].id).toLowerCase()
+            if (id.endsWith("-" + lower) || id.endsWith("." + lower)) return entries[k]
+        }
+    }
+    return null
+}
+
+function appFromEntry(entry) {
+    return { id: normalizeId(entry.id), name: entry.name || entry.id, icon: entry.icon || "" }
+}
+
 function appForWindow(window, entries) {
     if (!window) return null
     var ipc = window.lastIpcObject || {}
@@ -47,9 +72,19 @@ function appForWindow(window, entries) {
         if (!id) continue
         if (!fallback) fallback = id
         var entry = entryFor(id, entries)
-        if (entry) return { id: normalizeId(entry.id), name: entry.name || entry.id, icon: entry.icon || "" }
+        if (entry) return appFromEntry(entry)
     }
-    return fallback ? { id: fallback, name: fallback.replace(/[-_]+/g, " "), icon: "" } : null
+    if (fallback) return { id: fallback, name: fallback.replace(/[-_]+/g, " "), icon: "" }
+    var titles = [ipc.initialTitle, window.wayland ? window.wayland.title : "", ipc.title, window.title]
+    var fallbackTitle = ""
+    for (var j = 0; j < titles.length; j++) {
+        var title = String(titles[j] || "").trim()
+        if (!title) continue
+        if (!fallbackTitle) fallbackTitle = title
+        var titleEntry = entryForTitle(title, entries)
+        if (titleEntry) return appFromEntry(titleEntry)
+    }
+    return fallbackTitle ? { id: fallbackTitle, name: fallbackTitle, icon: "" } : null
 }
 
 function touchWindow(history, address) {
@@ -173,6 +208,7 @@ if (typeof module !== "undefined" && module.exports) {
         buildApps: buildApps,
         buildWindows: buildWindows,
         entryFor: entryFor,
+        entryForTitle: entryForTitle,
         iconName: iconName,
         initialIndex: initialIndex,
         normalizeId: normalizeId,
