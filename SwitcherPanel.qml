@@ -34,15 +34,16 @@ PanelWindow {
   property bool previewsRevealed: false
   readonly property bool surfaceRevealed: root.visible && (root.appMode || root.previewsRevealed)
   readonly property bool keyboardReady: root.active && root.inputReady && keyCatcher.activeFocus && keyCatcher.Window.active
+  readonly property real screenWidth: root.screen ? root.screen.width : 0
   readonly property real naturalWidth: root.apps.length ? root.apps.length * root.slotWidth + (root.apps.length - 1) * root.slotSpacing + 2 * root.sidePadding : 0
-  readonly property real surfaceWidth: Math.min(root.naturalWidth, Math.max(0, root.width - 2 * root.screenMargin))
+  readonly property real surfaceWidth: Math.min(root.naturalWidth, Math.max(0, root.screenWidth - 2 * root.screenMargin))
   property var iconSourceFor: function(app) { return "" }
   property var windowIconSourceFor: function(window) { return "" }
 
   // Icons and previews use the same centered row, with wider slots for previews.
   readonly property int iconSize: root.slotWidth
   property int artworkSize: 84
-  property int slotWidth: root.appMode ? 96 : Math.min(256, Math.max(1, root.width - 2 * (root.screenMargin + root.sidePadding)))
+  property int slotWidth: root.appMode ? 96 : Math.min(256, Math.max(1, root.screenWidth - 2 * (root.screenMargin + root.sidePadding)))
   property int slotSpacing: root.appMode ? 12 : 16
   property int sidePadding: 24
   readonly property real rowHeight: root.appMode ? root.iconSize : root.slotWidth * 10 / 16 + 40
@@ -290,12 +291,16 @@ PanelWindow {
       root.previewsRevealed = false
     }
   }
+  onSurfaceWidthChanged: pointerGate.reset()
+  onSurfaceHeightChanged: pointerGate.reset()
+
   color: "transparent"
   exclusionMode: ExclusionMode.Ignore
   WlrLayershell.layer: WlrLayer.Overlay
   WlrLayershell.namespace: "harryxu-super-switcher"
   WlrLayershell.keyboardFocus: root.visible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
-  anchors { top: true; bottom: true; left: true; right: true }
+  implicitWidth: Math.max(1, Math.ceil(root.surfaceWidth))
+  implicitHeight: Math.max(1, Math.ceil(root.surfaceHeight))
   mask: Region { item: root.surfaceRevealed ? switcherSurface : null }
 
   Ui.PointerMoveGate {
