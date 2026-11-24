@@ -119,7 +119,7 @@ Item {
     for (var i = 0; i < windows.length; i++) {
       var window = windows[i]
       if (window && root.windowFocusTarget(window.address) === target
-          && (window.lastIpcObject || {}).mapped !== false) return window
+          && SwitcherModel.isSwitchableWindow(window)) return window
     }
     return null
   }
@@ -134,8 +134,7 @@ Item {
     if (active || root.observedActiveWindow) return active
     // The initial clients snapshot can arrive before the first focus event.
     return (Hyprland.toplevels.values || []).find(function(candidate) {
-      var ipc = candidate && candidate.lastIpcObject || {}
-      return candidate && candidate.address && ipc.mapped !== false && ipc.focusHistoryID === 0
+      return SwitcherModel.isSwitchableWindow(candidate) && (candidate.lastIpcObject || {}).focusHistoryID === 0
         && (workspaceId === null || SwitcherModel.windowInWorkspace(candidate, workspaceId))
     }) || null
   }
@@ -466,6 +465,10 @@ Item {
         panel.cancel()
       } else if (String(event.name) === "renameworkspace") {
         Qt.callLater(root.updateWorkspaces)
+      } else if (String(event.name) === "openwindow") {
+        // A title event may have inserted this window before it was mapped.
+        Qt.callLater(root.refreshApps)
+        Qt.callLater(root.refreshWindows)
       } else if (String(event.name) === "movewindowv2") {
         Qt.callLater(root.refreshApps)
       }

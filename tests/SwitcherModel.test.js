@@ -66,7 +66,7 @@ test("keeps compositor list order for windows without a valid focus rank", () =>
 test("window cycling keeps a stable order for the focused app across workspaces", () => {
   const first = window("0x1", "code", { workspace: { id: 1 } })
   const second = window("0x2", "CODE", { workspace: { id: 2 } })
-  const third = { address: "0x3", lastIpcObject: { class: "code" } }
+  const third = { address: "0x3", lastIpcObject: { class: "code", mapped: true } }
   const windows = [first, window("0x4", "Nautilus"), second,
     window("0x5", "code", { mapped: false }), third]
   const matches = model.buildWindows(windows, entries, "Code.desktop")
@@ -180,6 +180,23 @@ test("skips closed or unidentified windows and tolerates missing desktop entries
     null, {}, window("0x1", "", {}), window("0x2", "code", { mapped: false }), window("0x3", "unknown-app"),
   ], entries, ["0x2"]))
   assert.deepEqual(apps, [{ id: "unknown-app", name: "unknown app", icon: "", addresses: ["0x3"] }])
+})
+
+test("ignores title-only toplevels until the compositor opens a window", () => {
+  const settings = { address: "0x1", title: "OneDriveGUI - Profile Settings", lastIpcObject: {} }
+  const status = { address: "0x2", title: "OneDriveGUI - Process Status", lastIpcObject: {} }
+  const duplicate = { address: "0x3", title: settings.title, lastIpcObject: {} }
+  const closed = { address: "0x4", title: settings.title, workspace: { id: 1 }, lastIpcObject: { mapped: false } }
+  const windows = [settings, status, duplicate, closed]
+
+  assert.deepEqual(plain(model.buildApps(windows, entries, [])), [])
+  assert.deepEqual(plain(model.buildWindows(windows, entries, settings.title)), [])
+  assert.deepEqual(plain(model.quitPlan(windows, entries, settings.title)), { windows: [], dialog: null })
+
+  settings.workspace = { id: 1 }
+  assert.deepEqual(plain(model.buildApps(windows, entries, []).map(app => app.addresses)), [[settings.address]])
+  assert.deepEqual(plain(model.buildWindows(windows, entries, settings.title).map(entry => entry.id)), [settings.address])
+  assert.deepEqual(plain(model.quitPlan(windows, entries, settings.title).windows.map(value => value.address)), [settings.address])
 })
 
 test("recording focus moves only that window to the front without mutating history", () => {

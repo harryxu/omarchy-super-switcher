@@ -92,6 +92,13 @@ function touchWindow(history, address) {
     return [address].concat(history.filter(function(value) { return value !== address }))
 }
 
+function isSwitchableWindow(window) {
+    if (!window || !window.address) return false
+    var ipc = window.lastIpcObject || {}
+    // Quickshell can create a toplevel from a title event before a window maps.
+    return ipc.mapped !== false && (ipc.mapped === true || !!window.workspace || !!window.wayland)
+}
+
 function windowInWorkspace(window, workspaceId) {
     if (!window) return false
     var workspace = window.workspace || (window.lastIpcObject || {}).workspace
@@ -102,13 +109,12 @@ function buildApps(windows, entries, history, workspaceId) {
     var ordered = []
     for (var i = 0; i < windows.length; i++) {
         var window = windows[i]
-        var ipc = window && window.lastIpcObject || {}
-        if (!window || !window.address || ipc.mapped === false) continue
+        if (!isSwitchableWindow(window)) continue
         if (workspaceId !== undefined && workspaceId !== null && !windowInWorkspace(window, workspaceId)) continue
         var app = appForWindow(window, entries)
         if (!app) continue
         var index = history.indexOf(window.address)
-        var rank = ipc.focusHistoryID
+        var rank = (window.lastIpcObject || {}).focusHistoryID
         ordered.push({
             app: app,
             address: window.address,
@@ -141,7 +147,7 @@ function buildWindows(windows, entries, appId) {
     // Keep compositor model order so separate quick taps can cycle past two windows.
     for (var i = 0; i < windows.length; i++) {
         var window = windows[i]
-        if (!window || !window.address || (window.lastIpcObject || {}).mapped === false) continue
+        if (!isSwitchableWindow(window)) continue
         var app = appForWindow(window, entries)
         if (app && app.id.toLowerCase() === id)
             matches.push({ id: window.address, name: app.name, window: window })
@@ -155,7 +161,7 @@ function quitPlan(windows, entries, appId, originalAddresses) {
     if (!id) return { windows: [], dialog: null }
     for (var i = 0; i < windows.length; i++) {
         var window = windows[i]
-        if (!window || !window.address || (window.lastIpcObject || {}).mapped === false) continue
+        if (!isSwitchableWindow(window)) continue
         var app = appForWindow(window, entries)
         if (app && app.id.toLowerCase() === id) matches.push(window)
     }
@@ -163,8 +169,9 @@ function quitPlan(windows, entries, appId, originalAddresses) {
     // Its exported parent still identifies the app that needs a response.
     for (var j = 0; j < windows.length; j++) {
         var candidate = windows[j]
-        var parent = candidate && candidate.wayland ? candidate.wayland.parent : null
-        if (!parent || (candidate.lastIpcObject || {}).mapped === false) continue
+        if (!isSwitchableWindow(candidate) || !candidate.wayland) continue
+        var parent = candidate.wayland.parent
+        if (!parent) continue
         if (matches.indexOf(candidate) !== -1) return { windows: [], dialog: candidate }
         for (var k = 0; k < matches.length; k++) {
             if (matches[k].wayland === parent) return { windows: [], dialog: candidate }
@@ -211,6 +218,7 @@ if (typeof module !== "undefined" && module.exports) {
         entryForTitle: entryForTitle,
         iconName: iconName,
         initialIndex: initialIndex,
+        isSwitchableWindow: isSwitchableWindow,
         normalizeId: normalizeId,
         quitPlan: quitPlan,
         selectionIndex: selectionIndex,
