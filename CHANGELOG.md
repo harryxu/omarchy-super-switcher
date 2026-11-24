@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.5.1
+
+### Added
+
+- Swap the Super and Alt/Option modifiers for app, window, and workspace
+  switching with the `setShortcutModifiers` command.
+
+### Fixed
+
+- Recognize Wayland apps without a window class by matching their titles to
+  installed desktop entries.
+- Keep windows out of app and window switching until they are mapped.
+- Size the switcher overlay to the card so it no longer covers the full screen.
+
 ## v0.5.0
 
 ### Changed
