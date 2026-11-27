@@ -318,7 +318,7 @@ PanelWindow {
     width: root.surfaceWidth
     height: root.surfaceHeight
     radius: root.surfaceRadius
-    color: Commons.Util.alpha(Commons.Color.background, root.appMode ? 0.88 : 0.97)
+    color: Commons.Util.alpha(Commons.Color.background, root.appMode ? 0.93 : 0.99)
     border.color: Commons.Util.alpha(Commons.Color.foreground, 0.20)
     border.width: 1
     opacity: root.surfaceRevealed ? (root.active ? 1 : 0.96) : 0
