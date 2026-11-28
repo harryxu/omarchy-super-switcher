@@ -1,11 +1,15 @@
 # Changelog
 
-## Unreleased
+## v0.6.0
 
 ### Added
 
 - Show a frosted switcher background with antialiased corners when Omarchy
   animations are enabled.
+
+### Changed
+
+- Increase the panel's background opacity when Omarchy animations are disabled.
 
 ### Fixed
 
