@@ -390,15 +390,23 @@ PanelWindow {
     id: switcherSurface
     readonly property real blurOpacity: backdropLoader.item ? backdropLoader.item.blurOpacity : 0
     readonly property bool roundedGlass: radius > 0 && blurOpacity > 0
+    readonly property color themeBackground: Commons.Color.background
+    readonly property bool lightBackground: 0.2126 * themeBackground.r + 0.7152 * themeBackground.g + 0.0722 * themeBackground.b >= 0.5
 
     anchors.horizontalCenter: parent.horizontalCenter
     anchors.verticalCenter: parent.verticalCenter
     width: root.surfaceWidth
     height: root.surfaceHeight
     radius: root.surfaceRadius
-    color: Commons.Util.alpha(Commons.Color.background, root.tintOpacity)
-    border.color: roundedGlass ? Commons.Util.alpha(Qt.darker(Commons.Color.background, 1.25), blurOpacity * 0.5)
-      : Commons.Util.alpha(Commons.Color.foreground, 0.20 * Math.min(1, root.backgroundOpacity / 0.9))
+    color: Commons.Util.alpha(themeBackground, root.tintOpacity)
+    border.color: {
+      if (roundedGlass) {
+        // The blur mask's integer edge shows through a lightly painted outline on light themes.
+        var shade = Qt.darker(themeBackground, lightBackground ? 1.55 : 1.25)
+        return Commons.Util.alpha(shade, blurOpacity * (lightBackground ? 0.9 : 0.5))
+      }
+      return Commons.Util.alpha(Commons.Color.foreground, 0.20 * Math.min(1, root.backgroundOpacity / 0.9))
+    }
     border.width: roundedGlass ? 2 : 1
     antialiasing: radius > 0
     opacity: root.surfaceRevealed ? (root.active ? 1 : 0.96) : 0

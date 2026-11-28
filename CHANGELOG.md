@@ -7,6 +7,11 @@
 - Show a frosted switcher background with antialiased corners when Omarchy
   animations are enabled.
 
+### Fixed
+
+- Smooth the frosted switcher's rounded corners on light themes at fractional
+  display scales.
+
 ## v0.5.1
 
 ### Added
