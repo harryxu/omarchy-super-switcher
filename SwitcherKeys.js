@@ -18,8 +18,8 @@ function cycleCommand(step, mode, fromBinding) {
     return capture
       + "shortcut.id = shortcut.id + 1 shortcut.key = shortcut.last_key shortcut.modifiers = held "
       + "local mode = " + shortcutMode + " "
-      + 'hl.exec_cmd("omarchy-shell -q harryxu.super-switcher shortcutPressed ' + direction
-      + ' " .. keycodes .. " " .. mode .. " " .. shortcut.id)'
+      + 'hl.dispatch(hl.dsp.event("harryxu.super-switcher press ' + direction
+      + ' " .. keycodes .. " " .. mode .. " " .. shortcut.id))'
   }
   var method = mode === "workspaces" ? '"workspaceCycleHeld"'
     : mode === "windows" ? '"windowCycleHeld"'
@@ -156,8 +156,8 @@ function pendingCommand(codes, generation) {
     // Keep tracking release after the hold threshold until the panel has
     // keyboard focus and checks the modifiers itself.
     + "local function finish(held) if held then stop_timer() else stop() end "
-    + "local method = held and \"acceptHold\" or \"acceptRelease\" "
-    + "hl.exec_cmd(\"omarchy-shell -q harryxu.super-switcher.switcher \" .. method .. \" " + generation + "\") end "
+    + "local action = held and \"hold\" or \"release\" "
+    + "hl.dispatch(hl.dsp.event(\"harryxu.super-switcher \" .. action .. \" " + generation + "\")) end "
     + "if not any_held() then finish(false) return end "
     + "stop() "
     + "state.generation = " + generation + " "
@@ -178,8 +178,7 @@ function releaseCommand(codes, generation, trackAppScope, revision) {
     + "if state and state.generation == " + generation + " and state.release then "
     + "state.release:remove() state.release = nil end "
     + "if not (" + (checks.length ? checks.join(" or ") : "false") + ") then "
-    + "hl.exec_cmd(\"omarchy-shell -q harryxu.super-switcher.switcher acceptRelease "
-    + generation + "\") "
+    + "hl.dispatch(hl.dsp.event(\"harryxu.super-switcher release " + generation + "\")) "
     + (trackAppScope ? "else hl.exec_cmd(\"omarchy-shell -q harryxu.super-switcher.switcher acceptAppScope "
       + generation + " " + revision + " \" .. tostring(hl.is_key_down(\"a\") or hl.is_key_down(\"A\"))) " : "")
     + "end"

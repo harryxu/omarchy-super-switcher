@@ -37,7 +37,7 @@ PanelWindow {
   property ShellScreen targetScreen: null
   property ShellScreen placementScreen: null
   property bool changingScreen: false
-  readonly property bool panelRequested: root.surfacesReady && !root.changingScreen && root.showRequested && root.inputReady
+  readonly property bool panelRequested: root.surfacesReady && !root.changingScreen && root.showRequested
   readonly property bool surfaceRevealed: root.visible && (root.appMode || root.previewsRevealed)
   readonly property bool keyboardReady: root.active && root.inputReady && keyCatcher.activeFocus && keyCatcher.Window.active
   readonly property real screenWidth: root.screen ? root.screen.width : 0
@@ -119,15 +119,16 @@ PanelWindow {
     }
   }
 
+  function handleModifierState(generation, held) {
+    if (!root.active || generation !== root.releaseGeneration) return
+    if (held) root.showRequested = true
+    else root.activateSelected()
+  }
+
   SwitcherIpcHandler {
     target: "harryxu.super-switcher.switcher"
-    function acceptRelease(generation: int): void {
-      // Ignore a reply from a session that was canceled or already committed.
-      if (root.active && generation === root.releaseGeneration) root.activateSelected()
-    }
-    function acceptHold(generation: int): void {
-      if (root.active && generation === root.releaseGeneration) root.showRequested = true
-    }
+    function acceptRelease(generation: int): void { root.handleModifierState(generation, false) }
+    function acceptHold(generation: int): void { root.handleModifierState(generation, true) }
     // The socket passes text, which QML would coerce from "false" to true.
     function acceptAppScope(generation: int, revision: int, currentWorkspaceOnly: string): void {
       if (root.active && root.appMode && generation === root.releaseGeneration
@@ -300,7 +301,7 @@ PanelWindow {
   Component.onCompleted: Qt.callLater(function() { root.surfacesReady = true })
 
   // Map the backdrop first so the compositor stacks the interactive surface above it.
-  visible: root.panelRequested && (!root.blurEnabled || (!!backdropLoader.item && backdropLoader.item.backingWindowVisible))
+  visible: root.panelRequested && root.inputReady && (!root.blurEnabled || (!!backdropLoader.item && backdropLoader.item.backingWindowVisible))
   onVisibleChanged: {
     if (root.visible) {
       // Take keyboard focus immediately so release works during capture.
@@ -331,6 +332,7 @@ PanelWindow {
 
   Loader {
     id: backdropLoader
+    // Prepare the click-through backdrop while Hyprland sets up the keyboard submap.
     // Recreate the attached opacity object along with its Wayland surface.
     active: root.panelRequested && root.blurEnabled
 

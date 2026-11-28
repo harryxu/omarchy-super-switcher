@@ -380,6 +380,7 @@ Item {
   }
 
   SwitcherIpcHandler {
+    id: switcherIpc
     target: "harryxu.super-switcher"
     function shortcutPressed(step: int, keycodes: string, mode: string, press: int): void {
       var heldKeys = SwitcherKeys.parseHeldKeys(keycodes)
@@ -452,7 +453,17 @@ Item {
     }
     function onRawEvent(event) {
       if (!event) return
-      if (String(event.name) === "configreloaded") {
+      if (String(event.name) === "custom") {
+        // Physical shortcuts and hold decisions arrive in compositor order over socket2.
+        var data = String(event.data)
+        var press = /^harryxu\.super-switcher press (-?1) (none|[0-9,]+) (apps|localApps|windows|workspaces) ([0-9]+)$/.exec(data)
+        if (press) {
+          switcherIpc.shortcutPressed(Number(press[1]), press[2], press[3], Number(press[4]))
+          return
+        }
+        var modifier = /^harryxu\.super-switcher (hold|release) ([0-9]+)$/.exec(data)
+        if (modifier) panel.handleModifierState(Number(modifier[2]), modifier[1] === "hold")
+      } else if (String(event.name) === "configreloaded") {
         // A reload removes the mode's bindings. End the current session before
         // restoring them, rather than leave a visible panel with drag enabled.
         panel.cancel()

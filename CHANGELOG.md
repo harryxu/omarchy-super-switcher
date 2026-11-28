@@ -11,6 +11,8 @@
 
 - Smooth the frosted switcher's rounded corners on light themes at fractional
   display scales.
+- Open the switcher faster on a held shortcut by delivering key events directly
+  from Hyprland and preparing the blur layer while keyboard input is set up.
 
 ## v0.5.1
 
