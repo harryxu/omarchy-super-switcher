@@ -495,7 +495,7 @@ Item {
 
   SwitcherPanel {
     id: panel
-    screen: root.focusedScreen()
+    targetScreen: root.focusedScreen()
     windowApp: root.windowSessionApp
     iconSourceFor: function(app) { return root.iconSource(app) }
     windowIconSourceFor: function(window) {
@@ -631,7 +631,7 @@ Item {
 
   HyprlandProcess {
     id: layerRule
-    command: ["hyprctl", "eval", "hl.layer_rule({ match = { namespace = \"harryxu-super-switcher\" }, no_anim = true, animation = \"none\" })"]
+    command: ["hyprctl", "eval", "hl.layer_rule({ match = { namespace = \"harryxu-super-switcher(-backdrop)?\" }, no_anim = true, animation = \"none\" })"]
   }
 
   HyprlandProcess {

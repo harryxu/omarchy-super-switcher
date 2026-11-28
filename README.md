@@ -58,6 +58,12 @@ If `Q` brings up a save dialog, the switcher closes and focuses it.
 
 ## Customization
 
+### Background blur
+
+The switcher uses a frosted background when Omarchy animations are on and its
+original translucent background when they are off. The blur also requires
+Hyprland's compositor blur to be enabled.
+
 ### Workspace preview settings
 
 Previews show still images by default. Live previews update as you browse.

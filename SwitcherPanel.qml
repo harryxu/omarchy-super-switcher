@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons as Commons
@@ -32,6 +33,11 @@ PanelWindow {
   property int shortcutPress: 0
   property int shortcutStep: 1
   property bool previewsRevealed: false
+  property bool surfacesReady: false
+  property ShellScreen targetScreen: null
+  property ShellScreen placementScreen: null
+  property bool changingScreen: false
+  readonly property bool panelRequested: root.surfacesReady && !root.changingScreen && root.showRequested && root.inputReady
   readonly property bool surfaceRevealed: root.visible && (root.appMode || root.previewsRevealed)
   readonly property bool keyboardReady: root.active && root.inputReady && keyCatcher.activeFocus && keyCatcher.Window.active
   readonly property real screenWidth: root.screen ? root.screen.width : 0
@@ -49,6 +55,11 @@ PanelWindow {
   readonly property real rowHeight: root.appMode ? root.iconSize : root.slotWidth * 10 / 16 + 40
   readonly property real surfaceHeight: root.rowHeight + 2 * root.verticalPadding + root.windowHeaderHeight
   property int surfaceRadius: root.appMode ? 36 : 28
+  readonly property bool blurRequested: !Commons.Style.reduceMotion
+  property real backgroundTransparency: root.blurRequested ? 30 : (root.appMode ? 7 : 1)
+  readonly property real backgroundOpacity: 1 - Math.max(0, Math.min(100, root.backgroundTransparency)) / 100
+  readonly property bool blurEnabled: root.blurRequested && root.backgroundOpacity > 0 && root.backgroundOpacity < 1
+  readonly property real tintOpacity: root.blurRequested ? root.backgroundOpacity * root.backgroundOpacity : root.backgroundOpacity
   property int selectionRadius: 20
   property int screenMargin: 32
   // Equal space above and below the icons; the name lives in the lower inset.
@@ -275,7 +286,21 @@ PanelWindow {
     onTriggered: if (root.visible) root.previewsRevealed = true
   }
 
-  visible: root.showRequested && root.inputReady
+  onTargetScreenChanged: {
+    // Unmap both surfaces before Qt recreates their Wayland windows on a new output.
+    root.changingScreen = true
+    Qt.callLater(root.placeSurfaces)
+  }
+
+  function placeSurfaces() {
+    root.placementScreen = root.targetScreen
+    root.changingScreen = false
+  }
+
+  Component.onCompleted: Qt.callLater(function() { root.surfacesReady = true })
+
+  // Map the backdrop first so the compositor stacks the interactive surface above it.
+  visible: root.panelRequested && (!root.blurEnabled || (!!backdropLoader.item && backdropLoader.item.backingWindowVisible))
   onVisibleChanged: {
     if (root.visible) {
       // Take keyboard focus immediately so release works during capture.
@@ -295,6 +320,7 @@ PanelWindow {
   onSurfaceHeightChanged: pointerGate.reset()
 
   color: "transparent"
+  screen: root.placementScreen
   exclusionMode: ExclusionMode.Ignore
   WlrLayershell.layer: WlrLayer.Overlay
   WlrLayershell.namespace: "harryxu-super-switcher"
@@ -302,6 +328,55 @@ PanelWindow {
   implicitWidth: Math.max(1, Math.ceil(root.surfaceWidth))
   implicitHeight: Math.max(1, Math.ceil(root.surfaceHeight))
   mask: Region { item: root.surfaceRevealed ? switcherSurface : null }
+
+  Loader {
+    id: backdropLoader
+    // Recreate the attached opacity object along with its Wayland surface.
+    active: root.panelRequested && root.blurEnabled
+
+    sourceComponent: PanelWindow {
+      id: backdrop
+
+      // Share the placement inputs so the compositor gives both layers the same origin.
+      screen: root.placementScreen
+      anchors: root.anchors
+      margins: root.margins
+      implicitWidth: root.implicitWidth
+      implicitHeight: root.implicitHeight
+      exclusionMode: ExclusionMode.Ignore
+      color: "transparent"
+      WlrLayershell.layer: WlrLayer.Overlay
+      WlrLayershell.namespace: "harryxu-super-switcher-backdrop"
+      WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+      mask: Region {}
+      visible: true
+
+      readonly property bool blurRegionActive: root.panelRequested && root.blurEnabled && root.surfaceRevealed
+        && backdropRegion.width > 0 && backdropRegion.height > 0
+        && backdropRegion.x < width && backdropRegion.y < height
+        && backdropRegion.x + backdropRegion.width > 0 && backdropRegion.y + backdropRegion.height > 0
+      readonly property real blurOpacity: {
+        if (!blurRegionActive) return 0
+        // Keep full blur until the last 15 percentage points of transparency.
+        var clear = Math.max(0, 1 - root.backgroundOpacity / 0.15)
+        return 1 - clear * clear
+      }
+
+      BackgroundEffect.blurRegion: blurRegionActive ? backdropRegion : null
+      HyprlandWindow.opacity: blurOpacity
+
+      Region {
+        id: backdropRegion
+
+        // Keep the integer blur boundary under the antialiased outline.
+        x: Math.ceil(switcherSurface.x + 1)
+        y: Math.ceil(switcherSurface.y + 1)
+        width: Math.max(0, Math.floor(switcherSurface.x + switcherSurface.width - 1) - x)
+        height: Math.max(0, Math.floor(switcherSurface.y + switcherSurface.height - 1) - y)
+        radius: Math.max(0, Math.ceil(switcherSurface.radius) - 1)
+      }
+    }
+  }
 
   Ui.PointerMoveGate {
     id: pointerGate
@@ -313,14 +388,19 @@ PanelWindow {
   // Centered switcher surface.
   Rectangle {
     id: switcherSurface
+    readonly property real blurOpacity: backdropLoader.item ? backdropLoader.item.blurOpacity : 0
+    readonly property bool roundedGlass: radius > 0 && blurOpacity > 0
+
     anchors.horizontalCenter: parent.horizontalCenter
     anchors.verticalCenter: parent.verticalCenter
     width: root.surfaceWidth
     height: root.surfaceHeight
     radius: root.surfaceRadius
-    color: Commons.Util.alpha(Commons.Color.background, root.appMode ? 0.93 : 0.99)
-    border.color: Commons.Util.alpha(Commons.Color.foreground, 0.20)
-    border.width: 1
+    color: Commons.Util.alpha(Commons.Color.background, root.tintOpacity)
+    border.color: roundedGlass ? Commons.Util.alpha(Qt.darker(Commons.Color.background, 1.25), blurOpacity * 0.5)
+      : Commons.Util.alpha(Commons.Color.foreground, 0.20 * Math.min(1, root.backgroundOpacity / 0.9))
+    border.width: roundedGlass ? 2 : 1
+    antialiasing: radius > 0
     opacity: root.surfaceRevealed ? (root.active ? 1 : 0.96) : 0
 
     Loader {
