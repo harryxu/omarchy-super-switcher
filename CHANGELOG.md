@@ -13,6 +13,8 @@
   display scales.
 - Open the switcher faster on a held shortcut by delivering key events directly
   from Hyprland and preparing the blur layer while keyboard input is set up.
+- Show the app row and selection together on Super+Tab. The blur now waits for
+  the foreground frame so it no longer flashes in the upper-left corner.
 
 ## v0.5.1
 

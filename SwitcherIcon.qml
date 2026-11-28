@@ -9,14 +9,15 @@ Item {
   required property url source
   property real artworkSize: 84
   readonly property int sampleSize: 210
-  property url displaySource: String(source) ? source : Qt.resolvedUrl("assets/default-app.svg")
+  readonly property url fallbackSource: Qt.resolvedUrl("assets/default-app.svg")
+  property url displaySource: String(source) ? source : root.fallbackSource
   property var bounds: Geometry.measuredBounds[String(root.displaySource)] || null
   property var grabResult: null
   property bool measuring: false
   property int measurementRevision: 0
   property bool fallbackVisible: false
   readonly property bool canMeasure: root.visible && !!root.Window.window && root.Window.window.visible
-  readonly property bool artworkReady: !!root.bounds || root.fallbackVisible
+  readonly property bool artworkReady: original.status === Image.Ready && (!!root.bounds || root.fallbackVisible)
   readonly property var placement: root.width > 0 ? Geometry.placement(root.bounds, root.sampleSize, root.artworkSize * root.sampleSize / root.width) : null
 
   function measure() {
@@ -25,10 +26,8 @@ Item {
     var cached = Geometry.measuredBounds[key]
     if (cached) {
       if (!root.fallbackVisible) root.bounds = cached
-      fallbackDeadline.stop()
       return
     }
-    if (!root.fallbackVisible) fallbackDeadline.start()
     if (!sampler.available) return
     root.measuring = true
     var revision = root.measurementRevision
@@ -46,7 +45,6 @@ Item {
 
   function cancelMeasurement() {
     root.measurementRevision++
-    fallbackDeadline.stop()
     if (root.grabResult) sampler.unloadImage(root.grabResult.url)
     root.grabResult = null
     root.measuring = false
@@ -58,9 +56,13 @@ Item {
   }
 
   Timer {
-    id: fallbackDeadline
     interval: 120
-    onTriggered: root.fallbackVisible = true
+    running: root.canMeasure && !root.artworkReady
+    onTriggered: {
+      // A slow image provider must not hold the whole row offscreen.
+      if (original.status !== Image.Ready) root.displaySource = root.fallbackSource
+      root.fallbackVisible = true
+    }
   }
 
   Item {
@@ -80,8 +82,8 @@ Item {
       cache: true
       onStatusChanged: {
         if (status === Image.Ready) Qt.callLater(root.measure)
-        else if (status === Image.Error && source !== Qt.resolvedUrl("assets/default-app.svg"))
-          root.displaySource = Qt.resolvedUrl("assets/default-app.svg")
+        else if (status === Image.Error && source !== root.fallbackSource)
+          root.displaySource = root.fallbackSource
       }
     }
   }
@@ -111,7 +113,6 @@ Item {
       unloadImage(root.grabResult.url)
       root.grabResult = null
       root.measuring = false
-      fallbackDeadline.stop()
       // A late measurement can help the next open without resizing this icon.
       if (bounds) Geometry.measuredBounds[String(root.displaySource)] = bounds
       if (!root.fallbackVisible) {
@@ -127,5 +128,5 @@ Item {
     root.fallbackVisible = false
     Qt.callLater(root.measure)
   }
-  onSourceChanged: root.displaySource = String(source) ? source : Qt.resolvedUrl("assets/default-app.svg")
+  onSourceChanged: root.displaySource = String(source) ? source : root.fallbackSource
 }

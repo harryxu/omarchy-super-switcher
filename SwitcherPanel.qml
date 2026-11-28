@@ -32,13 +32,14 @@ PanelWindow {
   property var heldModifierKeys: []
   property int shortcutPress: 0
   property int shortcutStep: 1
-  property bool previewsRevealed: false
+  property bool contentRevealed: false
+  property int appContentFrames: 0
   property bool surfacesReady: false
   property ShellScreen targetScreen: null
   property ShellScreen placementScreen: null
   property bool changingScreen: false
   readonly property bool panelRequested: root.surfacesReady && !root.changingScreen && root.showRequested
-  readonly property bool surfaceRevealed: root.visible && (root.appMode || root.previewsRevealed)
+  readonly property bool surfaceRevealed: root.visible && root.contentRevealed
   readonly property bool keyboardReady: root.active && root.inputReady && keyCatcher.activeFocus && keyCatcher.Window.active
   readonly property real screenWidth: root.screen ? root.screen.width : 0
   readonly property real naturalWidth: root.apps.length ? root.apps.length * root.slotWidth + (root.apps.length - 1) * root.slotSpacing + 2 * root.sidePadding : 0
@@ -260,11 +261,11 @@ PanelWindow {
     root.quitRequested(root.apps[root.selectedIndex].id)
   }
 
-  function revealPreviewsIfReady() {
-    if (!root.visible || root.appMode || root.previewsRevealed || appRow.width <= 0) return
+  function revealContentIfReady() {
+    if (!root.visible || root.contentRevealed || appRow.width <= 0) return
     // The initial scroll to the selected tile can land after the first layout.
     var selected = appRow.itemAtIndex(root.selectedIndex)
-    if (!selected || !selected.previewReady || selected.x >= appRow.contentX + appRow.width
+    if (!selected || !selected.contentReady || selected.x >= appRow.contentX + appRow.width
         || selected.x + selected.width <= appRow.contentX) return
     // ListView only creates delegates near the viewport. Wait for the tiles
     // that intersect it, including any partial tiles at its edges.
@@ -275,16 +276,16 @@ PanelWindow {
     if (first >= end) return
     for (var i = first; i < end; i++) {
       var tile = appRow.itemAtIndex(i)
-      if (!tile || !tile.previewReady) return
+      if (!tile || !tile.contentReady) return
     }
     previewDeadline.stop()
-    root.previewsRevealed = true
+    root.contentRevealed = true
   }
 
   Timer {
     id: previewDeadline
     interval: 180
-    onTriggered: if (root.visible) root.previewsRevealed = true
+    onTriggered: if (root.visible) root.contentRevealed = true
   }
 
   onTargetScreenChanged: {
@@ -307,14 +308,23 @@ PanelWindow {
       // Take keyboard focus immediately so release works during capture.
       keyCatcher.forceActiveFocus()
       root.scheduleShortcutRepeat()
-      if (!root.appMode) {
-        previewDeadline.restart()
-        Qt.callLater(appRow.revealSelection)
-      }
+      if (!root.appMode) previewDeadline.restart()
+      Qt.callLater(appRow.revealSelection)
     } else {
       shortcutRepeat.stop()
       previewDeadline.stop()
-      root.previewsRevealed = false
+      root.contentRevealed = false
+      root.appContentFrames = 0
+    }
+  }
+  // A swap already in flight can still contain the transparent staging frame.
+  // Let the compositor receive a complete foreground buffer before enabling blur.
+  Connections {
+    target: root.contentItem.Window.window
+    enabled: root.appMode && root.blurEnabled && root.surfaceRevealed && root.appContentFrames < 2
+    function onFrameSwapped() {
+      root.appContentFrames++
+      if (root.appContentFrames === 1) target.update()
     }
   }
   onSurfaceWidthChanged: pointerGate.reset()
@@ -364,8 +374,9 @@ PanelWindow {
         return 1 - clear * clear
       }
 
-      BackgroundEffect.blurRegion: blurRegionActive ? backdropRegion : null
-      HyprlandWindow.opacity: blurOpacity
+      readonly property bool foregroundReady: !root.appMode || root.appContentFrames >= 2
+      BackgroundEffect.blurRegion: foregroundReady && blurRegionActive ? backdropRegion : null
+      HyprlandWindow.opacity: foregroundReady ? blurOpacity : 0
 
       Region {
         id: backdropRegion
@@ -459,18 +470,18 @@ PanelWindow {
       boundsBehavior: Flickable.StopAtBounds
       keyNavigationEnabled: false
       currentIndex: count > 0 ? root.selectedIndex : -1
-      // Do not instantiate icons or start captures for a quick tap.
-      model: root.visible ? root.apps : []
+      // Prepare icons during keyboard setup after a confirmed hold. Previews need a mapped window.
+      model: (root.appMode ? root.panelRequested : root.visible) ? root.apps : []
 
       function revealSelection() {
         if (currentIndex >= 0 && currentIndex < count)
           positionViewAtIndex(currentIndex, ListView.Contain)
-        root.revealPreviewsIfReady()
+        root.revealContentIfReady()
       }
       onCurrentIndexChanged: Qt.callLater(appRow.revealSelection)
       onCountChanged: Qt.callLater(appRow.revealSelection)
       onWidthChanged: Qt.callLater(appRow.revealSelection)
-      onContentXChanged: if (!root.appMode && !root.previewsRevealed) Qt.callLater(root.revealPreviewsIfReady)
+      onContentXChanged: if (!root.contentRevealed) Qt.callLater(root.revealContentIfReady)
 
       delegate: Item {
         id: entryTile
@@ -478,8 +489,9 @@ PanelWindow {
         required property int index
         readonly property bool selected: root.selectedIndex === entryTile.index
         readonly property var window: root.windowMode && entryTile.modelData ? entryTile.modelData.window : null
-        readonly property bool previewReady: !!previewLoader.item && previewLoader.item.ready
-        onPreviewReadyChanged: if (!root.appMode && !root.previewsRevealed) Qt.callLater(root.revealPreviewsIfReady)
+        readonly property bool contentReady: root.appMode ? !!iconLoader.item && iconLoader.item.artworkReady
+          : !!previewLoader.item && previewLoader.item.ready
+        onContentReadyChanged: if (!root.contentRevealed) Qt.callLater(root.revealContentIfReady)
 
         width: root.slotWidth
         height: root.rowHeight
@@ -497,6 +509,7 @@ PanelWindow {
         }
 
         Loader {
+          id: iconLoader
           active: root.appMode
           anchors.horizontalCenter: parent.horizontalCenter
           anchors.verticalCenter: parent.verticalCenter
